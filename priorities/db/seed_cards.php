@@ -8,6 +8,9 @@ if (PHP_SAPI !== 'cli') {
     die("This script must be run from the command line.\n");
 }
 
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../includes/db.php';
 
 $cards = [
@@ -191,15 +194,23 @@ $cards = [
 
 $letter_sequence = ['P','R','I','O','R','I','T','I','E','S'];
 
-$db = get_db();
-$db->exec("TRUNCATE TABLE cards");
+try {
+    $db = get_db();
+    echo "Connected to database successfully.\n";
 
-$stmt = $db->prepare("INSERT INTO cards (id, content, category, emoji, letter) VALUES (?, ?, ?, ?, ?)");
-$inserted = 0;
-foreach ($cards as $i => $card) {
-    $letter = $letter_sequence[$i % 10];
-    $stmt->execute([$card['id'], $card['content'], $card['category'], $card['emoji'], $letter]);
-    $inserted++;
+    $db->exec("TRUNCATE TABLE cards");
+    echo "Cards table cleared.\n";
+
+    $stmt = $db->prepare("INSERT INTO cards (id, content, category, emoji, letter) VALUES (?, ?, ?, ?, ?)");
+    $inserted = 0;
+    foreach ($cards as $i => $card) {
+        $letter = $letter_sequence[$i % 10];
+        $stmt->execute([$card['id'], $card['content'], $card['category'], $card['emoji'], $letter]);
+        $inserted++;
+    }
+
+    echo "Inserted {$inserted} cards successfully.\n";
+} catch (Exception $e) {
+    echo "ERROR: " . $e->getMessage() . "\n";
+    exit(1);
 }
-
-echo "Inserted {$inserted} cards successfully.\n";

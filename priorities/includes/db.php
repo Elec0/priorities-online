@@ -14,7 +14,10 @@
  * If config.php is absent, the defaults below are used.
  */
 
-$_config_path = __DIR__ . '/../../config.php';
+// Look for config.php first in the priorities/ root, then one level above
+$_config_path = file_exists(__DIR__ . '/../config.php')
+    ? __DIR__ . '/../config.php'
+    : __DIR__ . '/../../config.php';
 if (file_exists($_config_path)) {
     require_once $_config_path;
 }

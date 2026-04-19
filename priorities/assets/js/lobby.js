@@ -4,9 +4,10 @@ const lobbyId    = parseInt(document.body.dataset.lobbyId, 10);
 const myPlayerId = parseInt(document.body.dataset.playerId, 10);
 const isHost     = document.body.dataset.isHost === '1';
 
-let stateVersion = 0;
-let pollTimer    = null;
-let lastChatId   = null;
+let stateVersion  = 0;
+let pollTimer     = null;
+let lastChatId    = null;
+let kickedByHost  = false;
 
 function startPolling() {
     poll();
@@ -20,9 +21,13 @@ async function poll() {
         if (data.error) return;
 
         if (data.lobby_status === 'playing') {
+            clearInterval(pollTimer);
             window.location.href = `/priorities/game.php?lobby_id=${lobbyId}`;
             return;
         }
+
+        // Only render lobby UI when in the waiting state
+        if (data.lobby_status !== 'waiting') return;
 
         stateVersion = data.state_version;
         renderLobby(data);
@@ -33,6 +38,9 @@ async function poll() {
 }
 
 function renderLobby(data) {
+    // Guard: don't render if we're already handling a kick
+    if (kickedByHost) return;
+
     const players = data.players || [];
     const active  = players.filter(p => p.status === 'active');
 
@@ -40,11 +48,24 @@ function renderLobby(data) {
     const codeEl = document.getElementById('lobby-code');
     if (codeEl && data.lobby_code) codeEl.textContent = data.lobby_code;
 
-    // Check if I was kicked
+    // Guard: skip if player ID is invalid (shouldn't happen, but be defensive)
+    if (isNaN(myPlayerId) || myPlayerId <= 0) {
+        console.error('[lobby] myPlayerId is invalid:', myPlayerId);
+        return;
+    }
+
+    // Check if I was kicked — only act on explicit 'kicked' status, never on missing player
     const me = players.find(p => parseInt(p.id, 10) === myPlayerId);
-    if (!me || me.status === 'kicked') {
-        document.getElementById('kicked-overlay').hidden = false;
+    if (me && me.status === 'kicked') {
+        kickedByHost = true;
         clearInterval(pollTimer);
+        document.getElementById('kicked-overlay').hidden = false;
+        return;
+    }
+
+    // If me is not in the list at all, treat as a transient poll error and skip render
+    if (!me) {
+        console.warn('[lobby] Current player not found in poll response — skipping render', { myPlayerId, players });
         return;
     }
 
@@ -117,6 +138,7 @@ if (startBtn) {
             const res  = await fetch('/priorities/api/start_game.php', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
+                clearInterval(pollTimer);
                 window.location.href = `/priorities/game.php?lobby_id=${lobbyId}`;
             } else {
                 alert(data.error || 'Failed to start game');
