@@ -1,0 +1,21 @@
+# Database credentials
+config.php
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# PHP
+*.log
+/vendor/
+composer.lock
+
+# Node (if ever added)
+node_modules/
+npm-debug.log*
