@@ -20,20 +20,26 @@ Player count: 3+ (minimum 3 to start). No maximum player count is enforced in co
 
 | Layer | Technology | Version | Notes |
 |---|---|---|---|
-| Backend language | PHP | 8.1+ | Uses named arguments, match expressions, arrow functions |
+| Backend language | PHP | 8.1+ | Strict types (`declare(strict_types=1)`), typed properties, named arguments, match expressions, arrow functions |
 | Database | MySQL / MariaDB | 8 / 10.2+ | utf8mb4 throughout; JSON column type heavily used |
-| Frontend JS | Vanilla JS (ES2020) | — | No bundler, no framework |
+| Frontend source | TypeScript | 5+ | Compiled to ES2020 JS; compiled output committed to repo and served statically |
+| Frontend build (local dev) | Vite | 5+ | HMR during local development; `vite build` outputs plain JS to `priorities/assets/js/` |
 | Drag-and-drop | SortableJS | 1.15.2 | CDN-loaded; used on game page only |
 | Real-time sync | Server-Sent Events (SSE) | — | Client uses `EventSource`; server holds connection up to 30s and pushes on version change |
 | Caching / rate limiting | APCu | — | PHP in-process shared memory; no extra server software required |
 | Tests | PHPUnit | 11 | Only pure (database-free) logic is unit-tested |
-| Dependency manager | Composer | — | Dev-only dependency (PHPUnit) |
+| Dependency manager (PHP) | Composer | — | PSR-4 autoloading for `includes/`; PHPUnit as dev dependency |
+| Local dev environment | Docker Compose | — | `php:8.1-apache` + `mysql:8` + Adminer; mirrors prod without a local LAMP install |
 
 **Key design decision — SSE over WebSockets:** SSE (`text/event-stream`) was chosen over WebSockets because it requires no persistent server process and works on standard Apache/PHP shared hosting. The client uses the browser-native `EventSource` API; no library is required. The server holds the connection open for up to 30 seconds, polling the DB for a version change every ~300ms. When a change is detected (or timeout reached), it sends a single event and closes the connection; `EventSource` automatically reconnects.
 
 **Key design decision — SSE over HTTP polling:** The previous implementation polled every 2 seconds unconditionally. SSE eliminates the fixed tick: state changes are delivered within ~300ms of occurring, and no payload is sent when nothing changes. Server load is reduced because the 30-second hold replaces 15 individual HTTP requests.
 
-**Key design decision — Vanilla JS:** No frontend framework (React, Vue, etc.) was used. All DOM manipulation is imperative. This keeps the build process trivially simple (no npm, no bundler) while the game logic is simple enough that a framework adds no value.
+**Key design decision — Vanilla JS:** No frontend framework (React, Vue, etc.) was used. All DOM manipulation is imperative. This keeps the build process trivially simple while the game logic is simple enough that a framework adds no value.
+
+**Key design decision — TypeScript compiled to static JS:** The hosting environment (GoDaddy shared hosting) serves static files only — it has no Node.js runtime. TypeScript is used for authoring only; `tsc` / `vite build` compiles to plain `.js` files in `priorities/assets/js/` which are committed to the repository and deployed directly. The host never sees TypeScript.
+
+**Key design decision — Docker Compose for local dev only:** Docker Compose provides a one-command local environment (`docker compose up`) that matches the production LAMP stack without requiring a local Apache/MySQL/PHP install. It is never used in production; GoDaddy runs the PHP files directly. The `docker-compose.yml` lives at the project root and is not deployed.
 
 ---
 
@@ -71,16 +77,23 @@ Priorities-online/
 │   └── assets/
 │       ├── css/style.css         # Single global stylesheet
 │       └── js/
-│           ├── lobby.js          # Waiting-room UI logic
-│           └── game.js           # Game board UI logic
+│           ├── types.ts          # Shared TypeScript interfaces (GameState, RoundState, etc.)
+│           ├── lobby.ts          # Waiting-room UI logic (TypeScript source)
+│           ├── lobby.js          # Compiled output — committed, served by host
+│           ├── game.ts           # Game board UI logic (TypeScript source)
+│           └── game.js           # Compiled output — committed, served by host
 │
 ├── tests/
 │   ├── bootstrap.php             # PHPUnit bootstrap: stubs DB constants, loads game_logic.php
 │   └── GameLogicTest.php         # Unit tests for pure game logic functions
 │
 ├── cards.js                      # Legacy card data file; not used by the application — authoritative data is in seed_cards.php
-├── composer.json                 # Dev dependency: phpunit/phpunit ^11
+├── composer.json                 # PSR-4 autoloading for includes/; dev dependency: phpunit/phpunit ^11
 ├── phpunit.xml                   # PHPUnit configuration
+├── tsconfig.json                 # TypeScript compiler config (target ES2020, outDir priorities/assets/js/)
+├── vite.config.ts                # Vite config for local dev HMR and production build
+├── package.json                  # Dev dependencies: typescript, vite
+├── docker-compose.yml            # Local dev: php:8.1-apache + mysql:8 + Adminer
 └── priorities-rules.md           # Human-readable game rules document
 ```
 
@@ -297,6 +310,8 @@ All endpoints return `Content-Type: application/json`. On error, they return a J
 
 ## 7. Core Game Logic (`includes/game_logic.php`)
 
+All PHP files use `declare(strict_types=1)`. All function signatures have typed parameters and return types. All classes use typed properties. This applies to the entire `includes/` directory, all `api/` endpoints, and all `db/` scripts.
+
 This file is split into two conceptual groups:
 
 ### 7.1 Pure Functions (testable without DB)
@@ -355,14 +370,16 @@ PHP pages pass data to JavaScript via `data-*` attributes on `<body>`:
 
 This avoids inline `<script>` blocks and keeps the JS files static.
 
-### 8.3 Real-Time Architecture (`lobby.js`, `game.js`)
+### 8.3 Real-Time Architecture (`lobby.ts`, `game.ts`)
 Both files follow the same pattern:
 1. `startStream()` opens an `EventSource` connection to `GET /api/stream.php?lobby_id={id}&state_version={v}`.
-2. On `message` event: parse the JSON payload, update the local `state_version`, and re-render.
+2. On `message` event: parse the JSON payload (typed as `GameState` / `LobbyState`), update the local `state_version`, and re-render.
 3. On `error` event (connection dropped or keepalive close): `EventSource` reconnects automatically; no manual retry logic is needed.
 4. On lobby page: if `lobby_status` changes to 'playing' in a received event, redirect to `game.php`.
 5. On game page: re-render only when `state_version` changes (tracked with `hasRenderedState` + version comparison).
 6. Chat is included in every state event (last 50 messages, returned most-recent first then reversed in PHP).
+
+**TypeScript types:** Shared interfaces (e.g., `GameState`, `RoundState`, `PlayerState`, `LetterMap`) are defined in `priorities/assets/js/types.ts` and imported by both `lobby.ts` and `game.ts`. These types mirror the JSON shapes returned by `stream.php` and serve as a contract between the PHP backend and the frontend.
 
 ### 8.4 Game State Rendering (`game.js`)
 `renderState(data)` is the top-level render function. It dispatches to:
@@ -463,7 +480,26 @@ If neither is found, it falls back to hardcoded defaults (empty password). **Do 
 - All paths in the code are root-relative starting with `/priorities/` (e.g., `/priorities/api/stream.php`, `/priorities/assets/css/style.css`)
 - This means the app works correctly when served at the `/priorities/` subpath on a host
 
-### PHP built-in server (local dev)
+### Local dev (Docker Compose — recommended)
+```bash
+docker compose up        # starts Apache/PHP, MySQL, and Adminer
+# Adminer available at http://localhost:8080
+```
+The `docker-compose.yml` mounts the project root into the container; file changes are reflected immediately without a rebuild.
+
+### Local dev (frontend — Vite)
+Run alongside Docker Compose for HMR on TypeScript changes:
+```bash
+npm install
+npm run dev   # vite dev server proxies API requests to the Docker PHP container
+```
+To compile TypeScript to the committed JS files without the dev server:
+```bash
+npm run build   # vite build → outputs to priorities/assets/js/
+```
+**Always run `npm run build` and commit the compiled `.js` files before deploying to production.**
+
+### PHP built-in server (minimal local dev, no Docker)
 ```bash
 php -S localhost:8000 -t priorities/
 ```
