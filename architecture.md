@@ -24,11 +24,14 @@ Player count: 3+ (minimum 3 to start). No maximum player count is enforced in co
 | Database | MySQL / MariaDB | 8 / 10.2+ | utf8mb4 throughout; JSON column type heavily used |
 | Frontend JS | Vanilla JS (ES2020) | — | No bundler, no framework |
 | Drag-and-drop | SortableJS | 1.15.2 | CDN-loaded; used on game page only |
-| Real-time sync | HTTP polling | — | Every 2 seconds via `setInterval` |
+| Real-time sync | Server-Sent Events (SSE) | — | Client uses `EventSource`; server holds connection up to 30s and pushes on version change |
+| Caching / rate limiting | APCu | — | PHP in-process shared memory; no extra server software required |
 | Tests | PHPUnit | 11 | Only pure (database-free) logic is unit-tested |
 | Dependency manager | Composer | — | Dev-only dependency (PHPUnit) |
 
-**Key design decision — no WebSockets/SSE:** The polling approach was chosen for simplicity of deployment (no persistent server process required, works on shared hosting). The 2-second poll interval is a pragmatic trade-off between responsiveness and server load. No HTTP long-polling or server-sent events.
+**Key design decision — SSE over WebSockets:** SSE (`text/event-stream`) was chosen over WebSockets because it requires no persistent server process and works on standard Apache/PHP shared hosting. The client uses the browser-native `EventSource` API; no library is required. The server holds the connection open for up to 30 seconds, polling the DB for a version change every ~300ms. When a change is detected (or timeout reached), it sends a single event and closes the connection; `EventSource` automatically reconnects.
+
+**Key design decision — SSE over HTTP polling:** The previous implementation polled every 2 seconds unconditionally. SSE eliminates the fixed tick: state changes are delivered within ~300ms of occurring, and no payload is sent when nothing changes. Server load is reduced because the 30-second hold replaces 15 individual HTTP requests.
 
 **Key design decision — Vanilla JS:** No frontend framework (React, Vue, etc.) was used. All DOM manipulation is imperative. This keeps the build process trivially simple (no npm, no bundler) while the game logic is simple enough that a framework adds no value.
 
@@ -48,7 +51,7 @@ Priorities-online/
 │   │   ├── create_lobby.php      # POST: create lobby, set auth cookie
 │   │   ├── join_lobby.php        # POST: join lobby by 6-char code, set auth cookie
 │   │   ├── start_game.php        # POST: host-only; shuffle deck, create game row
-│   │   ├── poll.php              # GET: primary state sync + timeout enforcement
+│   │   ├── stream.php            # GET: SSE endpoint; holds connection, pushes state on version change, enforces round timeouts
 │   │   ├── submit_ranking.php    # POST: target player submits their secret ranking
 │   │   ├── update_guess.php      # POST: any non-target player updates group guess
 │   │   ├── lock_in_guess.php     # POST: final decider scores the round
@@ -99,7 +102,7 @@ All tables use `InnoDB` engine, `utf8mb4` charset. Foreign keys cascade on delet
 | `created_at` | DATETIME | |
 | `updated_at` | DATETIME ON UPDATE | Used for stale-lobby detection |
 
-**Stale lobby cleanup:** `poll.php` runs a `DELETE FROM lobbies WHERE updated_at < NOW() - INTERVAL 24 HOUR AND status != 'playing'` on every poll request. This piggybacks on regular traffic; no background job required.
+**Stale lobby cleanup:** `stream.php` runs a `DELETE FROM lobbies WHERE updated_at < NOW() - INTERVAL 24 HOUR AND status != 'playing'` on every new connection. This piggybacks on regular traffic; no background job required.
 
 ### 4.2 `players`
 | Column | Type | Notes |
@@ -130,9 +133,11 @@ All tables use `InnoDB` engine, `utf8mb4` charset. Foreign keys cascade on delet
 | `state_version` | INT | Incremented on every state change; clients use this to detect when to re-render |
 | `created_at` | DATETIME | |
 
-**Key design decision — `state_version`:** Because the frontend polls every 2 seconds, re-rendering the DOM on every poll would cause flicker and UX issues. The `state_version` integer allows the client to skip re-rendering when nothing has changed. It is incremented (via `bump_version()`) on every write that changes visible game state.
+**Key design decision — `state_version`:** Because the frontend uses SSE, re-rendering the DOM on every reconnect would cause flicker and UX issues. The `state_version` integer allows the server to detect a change and push an event, and the client to skip re-rendering when the version is unchanged. It is incremented (via `bump_version()`) on every write that changes visible game state.
 
-**Key design decision — deck as JSON array:** The shuffled deck of card IDs is stored as a JSON array in `games.deck_order`. Cards are "dealt" by splicing from the front and the remaining deck is written back. This is simple and avoids needing a separate deck table. However, the read-splice-write pattern in `create_next_round` is a TOCTOU race: two simultaneous calls could deal the same 5 cards to two rounds. No explicit database transactions are used; wrapping `create_next_round` in `$db->beginTransaction()` / `$db->commit()` would fully eliminate this risk and is the recommended fix before production use.
+**APCu state cache:** The full state payload is cached in APCu keyed by `game:{game_id}:{state_version}`. `stream.php` serves the cached payload on a version change hit, avoiding redundant JSON assembly and DB round-trips when multiple clients reconnect simultaneously after the same event. The cache entry is written once by the first requester after a version bump and expires after 60 seconds.
+
+**Key design decision — deck as JSON array:** The shuffled deck of card IDs is stored as a JSON array in `games.deck_order`. Cards are "dealt" by splicing from the front and the remaining deck is written back. This is simple and avoids needing a separate deck table. The read-splice-write pattern is a TOCTOU race if two calls run simultaneously; this is addressed by wrapping `create_next_round` and `lock_in_guess.php` in explicit InnoDB transactions (`$db->beginTransaction()` / `$db->commit()`).
 
 **Key design decision — player indexes not IDs in `games`:** `target_player_index` and `final_decider_index` are indexes into the sorted `players WHERE status='active' ORDER BY turn_order` result set, not direct player IDs. The actual player IDs for a round are stored in the `rounds` table. The indexes are used by `next_active_player_index()` to advance turns in a wrap-around fashion. This separation means the game table doesn't need to be updated every time a player is kicked.
 
@@ -154,7 +159,7 @@ All tables use `InnoDB` engine, `utf8mb4` charset. Foreign keys cascade on delet
 **Round status state machine:**
 ```
 ranking → guessing   (target submits ranking via submit_ranking.php)
-ranking → skipped    (ranking_deadline passes; poll.php auto-skips)
+ranking → skipped    (ranking_deadline passes; stream.php auto-skips during hold loop)
 guessing → revealed  (final decider locks in via lock_in_guess.php)
 ```
 
@@ -167,7 +172,7 @@ guessing → revealed  (final decider locks in via lock_in_guess.php)
 | `message` | TEXT | |
 | `created_at` | DATETIME | |
 
-System messages (game events like "Round 3 started!") use `player_id = NULL`. The `poll.php` response always includes the last 50 messages, returned in ascending chronological order (fetched DESC, then reversed in PHP).
+System messages (game events like "Round 3 started!") use `player_id = NULL`. The `stream.php` state event always includes the last 50 messages, returned in ascending chronological order (fetched DESC, then reversed in PHP).
 
 ### 4.6 `cards`
 | Column | Type | Notes |
@@ -181,6 +186,16 @@ System messages (game events like "Round 3 started!") use `player_id = NULL`. Th
 **Total cards:** 185 distinct card IDs in the dataset (some ID numbers are skipped; the IDs reflect the original physical game's numbering).
 
 **Letter assignment:** The `letter` field on each card determines which letter it contributes when won. The distribution of letters in the deck is set at seed time in `seed_cards.php`. This is the mechanism by which the "spell PRIORITIES" win condition operates. The thresholds are P×1, R×2, I×3, O×1, T×1, E×1, S×1 = 10 cards needed per side.
+
+### 4.7 Explicit Indexes
+
+InnoDB automatically creates indexes for all `PRIMARY KEY`, `UNIQUE`, and foreign key columns. The following additional indexes are created explicitly for query performance:
+
+| Table | Index columns | Reason |
+|---|---|---|
+| `lobbies` | `status` | Stale-lobby cleanup query filters by `status != 'playing'` |
+| `rounds` | `status`, `ranking_deadline` | Timeout check in `stream.php` filters active rounds with past deadlines |
+| `chat_messages` | `created_at` | `ORDER BY created_at DESC LIMIT 50` for every state fetch |
 
 ---
 
@@ -196,7 +211,7 @@ System messages (game events like "Round 3 started!") use `player_id = NULL`. Th
 - **CSRF:** No explicit CSRF token is needed because all cookies are `SameSite=Strict`. Cross-site requests will not include the auth cookie.
 - **SQL injection:** All database queries use PDO prepared statements throughout. No raw string interpolation into SQL.
 - **XSS:** All user-supplied strings (player names, chat messages) are escaped with `htmlspecialchars()` before being rendered in PHP pages.
-- **Rate limiting:** No server-side rate limiting is implemented. `update_guess.php` is partially protected by a 400ms client-side debounce, but a malicious client could bypass this. Consider adding server-side throttling before production use.
+- **Rate limiting:** APCu is used to enforce per-token rate limits server-side. `update_guess.php` allows a maximum of 10 requests per token per 10-second window; `send_message.php` allows 5 per 10 seconds. Requests that exceed the limit receive 429. The 400ms client-side debounce on drag events remains as a UX optimization.
 
 ---
 
@@ -215,16 +230,22 @@ All endpoints return `Content-Type: application/json`. On error, they return a J
 - Output: `{success: true, lobby_id, player_id, redirect_url}`
 - Errors: 404 if lobby not found or not waiting, 409 if name already taken in lobby
 
-### GET `/api/poll.php`
+### GET `/api/stream.php`
 - Input: query params `lobby_id`, `state_version`
 - Auth: `priorities_token` cookie required
-- Action:
-  1. Deletes stale non-playing lobbies (updated_at > 24h old)
-  2. Checks for timed-out ranking rounds (deadline < NOW()) and calls `skip_round()` if found
-  3. Builds and returns full state payload
-- Output (waiting): `{state_version, lobby_status:'waiting', lobby_code, game_id:null, players[], chat[]}`
-- Output (playing): `{state_version, lobby_status:'playing', lobby_code, game_id, game_status, round{id,number,status,card_ids,cards[],group_ranking,result,ranking_deadline}, target_player, final_decider, players[], player_letters, game_letters, chat[]}`
+- Response headers: `Content-Type: text/event-stream`, `Cache-Control: no-cache`, `X-Accel-Buffering: no`
+- Behavior:
+  1. On connection: deletes stale non-playing lobbies (updated_at > 24h old)
+  2. Enters a hold loop (up to 30s), checking DB every ~300ms:
+     - Checks for timed-out ranking rounds (deadline < NOW()) and calls `skip_round()` if found
+     - Compares current `games.state_version` to client's `state_version`
+     - On version change: breaks out of loop and sends state event
+  3. If hold loop times out with no change: sends a keepalive comment (`: keepalive\n\n`) and closes; `EventSource` reconnects automatically
+- Event format (on state change): `data: {<full state JSON>}\n\n`
+- Full state payload (playing): `{state_version, lobby_status:'playing', lobby_code, game_id, game_status, round{id,number,status,card_ids,cards[],group_ranking,result,ranking_deadline}, target_player, final_decider, players[], player_letters, game_letters, chat[]}`
+- Full state payload (waiting): `{state_version, lobby_status:'waiting', lobby_code, game_id:null, players[], chat[]}`
 - Note: `target_ranking` is only included in the round payload when `round.status === 'revealed'` to prevent cheating.
+- Note: Full state payload is served from APCu cache when available (keyed by `game:{game_id}:{state_version}`); a fresh payload is built and cached on cache miss.
 
 ### POST `/api/start_game.php`
 - Auth: host only
@@ -310,7 +331,7 @@ Looks up the `letter` field for each card ID and increments the corresponding co
 Inserts a chat row with `player_id = NULL`.
 
 **`create_next_round(PDO $db, int $game_id): bool`**
-Full round-creation logic: advances target/FD indexes, deals 5 cards from deck, inserts round row (60s deadline), updates games row. Returns false if deck has fewer than 5 cards.
+Full round-creation logic: advances target/FD indexes, deals 5 cards from deck, inserts round row (60s deadline), updates games row. Wrapped in an InnoDB transaction to prevent partial state on failure. Returns false if deck has fewer than 5 cards.
 
 **`skip_round(PDO $db, int $game_id, int $round_id, string $skipped_player_name): void`**
 Marks current round as 'skipped', returns its 5 cards to the bottom of the deck, inserts system chat, calls `create_next_round`. If deck exhausted, sets game status='draw'.
@@ -334,14 +355,14 @@ PHP pages pass data to JavaScript via `data-*` attributes on `<body>`:
 
 This avoids inline `<script>` blocks and keeps the JS files static.
 
-### 8.3 Polling Architecture (`lobby.js`, `game.js`)
+### 8.3 Real-Time Architecture (`lobby.js`, `game.js`)
 Both files follow the same pattern:
-1. `startPolling()` calls `poll()` immediately, then sets a 2-second interval.
-2. `poll()` calls `GET /api/poll.php?lobby_id={id}&state_version={v}`.
-3. **Server short-circuit:** If the client's `state_version` matches the current `games.state_version`, `poll.php` returns immediately with `{state_version, unchanged: true}` and skips building the full state payload. This prevents redundant JSON assembly and DB reads on every 2-second tick when nothing has changed. Chat is the only exception — it is not versioned and is always fetched.
-4. On lobby page: if `lobby_status` changes to 'playing', redirect to `game.php`.
+1. `startStream()` opens an `EventSource` connection to `GET /api/stream.php?lobby_id={id}&state_version={v}`.
+2. On `message` event: parse the JSON payload, update the local `state_version`, and re-render.
+3. On `error` event (connection dropped or keepalive close): `EventSource` reconnects automatically; no manual retry logic is needed.
+4. On lobby page: if `lobby_status` changes to 'playing' in a received event, redirect to `game.php`.
 5. On game page: re-render only when `state_version` changes (tracked with `hasRenderedState` + version comparison).
-6. Chat is always re-rendered (last 50 messages, returned most-recent first then reversed in PHP).
+6. Chat is included in every state event (last 50 messages, returned most-recent first then reversed in PHP).
 
 ### 8.4 Game State Rendering (`game.js`)
 `renderState(data)` is the top-level render function. It dispatches to:
@@ -365,7 +386,7 @@ Used only on `game.php`. Loaded from CDN. A single `sortableInst` variable track
 The word PRIORITIES has the letter sequence `['P','R','I','O','R','I','T','I','E','S']` (10 letters). The display iterates this sequence and marks each tile as 'filled' or 'hollow' based on whether the accumulated count meets the position (e.g., second R requires R≥2). Both player tiles and game tiles are rendered this way.
 
 ### 8.7 Countdown Timer
-During the ranking phase, `game.js` displays a live countdown to `ranking_deadline` (60 seconds from round start). It uses `setInterval(tick, 1000)` and counts down using `Date.now()` vs `new Date(deadline).getTime()`. Warns visually (CSS class `countdown-warning`) when <15 seconds remain. The server enforces the timeout through `poll.php`.
+During the ranking phase, `game.js` displays a live countdown to `ranking_deadline` (60 seconds from round start). It uses `setInterval(tick, 1000)` and counts down using `Date.now()` vs `new Date(deadline).getTime()`. Warns visually (CSS class `countdown-warning`) when <15 seconds remain. The server enforces the timeout through `stream.php`'s hold loop.
 
 ---
 
@@ -439,7 +460,7 @@ If neither is found, it falls back to hardcoded defaults (empty password). **Do 
 
 ### Web server configuration
 - Document root: `priorities/` directory
-- All paths in the code are root-relative starting with `/priorities/` (e.g., `/priorities/api/poll.php`, `/priorities/assets/css/style.css`)
+- All paths in the code are root-relative starting with `/priorities/` (e.g., `/priorities/api/stream.php`, `/priorities/assets/css/style.css`)
 - This means the app works correctly when served at the `/priorities/` subpath on a host
 
 ### PHP built-in server (local dev)
@@ -466,12 +487,12 @@ Then: `php priorities/db/seed_cards.php`
 4. **Target player cannot update group guess** — enforced in `update_guess.php` with a 403.
 5. **group_ranking must be set before locking in** — enforced in `lock_in_guess.php`.
 6. **Ranking must contain exactly the 5 dealt cards** — both `submit_ranking.php` and `update_guess.php` sort and compare the submitted IDs against `round.card_ids`.
-7. **target_ranking is secret until revealed** — `poll.php` omits `target_ranking` from the response unless `round.status === 'revealed'`.
+7. **target_ranking is secret until revealed** — `stream.php` omits `target_ranking` from the state payload unless `round.status === 'revealed'`.
 8. **Kicked players are not deleted** — their rows remain with `status='kicked'`. This preserves chat history attribution.
 9. **Lobby code uniqueness is enforced with a retry loop** — `create_lobby.php` generates a code and checks for duplicates in a `do-while` loop. Collision probability is negligible (26^6 ≈ 300M codes).
 10. **Host disconnect has no reassignment** — if the host closes their browser or loses their cookie, they must rejoin using the lobby code and their session will resume (cookie is valid for 7 days). There is no automatic host promotion. If the host's cookie expires, the lobby becomes unmanageable (no one can start the game or kick players).
 11. **Host cannot kick themselves** — `kick_player.php` returns 400 if the target `player_id` matches the host's own ID.
-12. **No explicit database transactions** — round creation, score application, and deck updates are done as sequential individual queries. A crash mid-operation (or a concurrent request) could leave inconsistent state. The `create_next_round` function is the most critical site; wrapping it in `$db->beginTransaction()` / `$db->commit()` is recommended before production use.
+12. **Critical writes are wrapped in InnoDB transactions** — `create_next_round` and the scoring block in `lock_in_guess.php` each use `$db->beginTransaction()` / `$db->commit()` (with `$db->rollBack()` on exception). This prevents partial state from being written if a concurrent request or crash occurs mid-operation.
 13. **Chat messages are capped at 256 characters** — enforced server-side in `send_message.php` (returns 400 if exceeded).
 
 ---
@@ -483,7 +504,7 @@ To recreate this project in another stack (e.g., Node.js/Express, Python/FastAPI
 1. **Authentication:** Token-based, stored in HttpOnly cookie. Token = primary key of a player session. No separate session store.
 2. **State versioning:** An incrementing integer on the game record that clients use to detect changes. Increment on every state-changing write.
 3. **Round state machine:** The `ranking → guessing → revealed` lifecycle with `skipped` as a terminal state for timeout.
-4. **Timeout enforcement via poll:** The timeout check is side-effected into the poll endpoint, not a background job. Any poll for an active game with a past `ranking_deadline` triggers `skip_round`.
+4. **Timeout enforcement via SSE stream:** The timeout check is side-effected into the SSE hold loop in `stream.php`, not a background job. Any stream connection for an active game with a past `ranking_deadline` triggers `skip_round`.
 5. **Letter scoring:** JSON objects tracking counts per letter. Win condition: P≥1, R≥2, I≥3, O≥1, T≥1, E≥1, S≥1.
 6. **Player rotation:** Wrap-around advancement of two role indexes (target + FD), with FD always skipping the current target.
 7. **Live group guess:** Any non-target player can update `group_ranking` at any time during the guessing phase. Last-write-wins is acceptable.
