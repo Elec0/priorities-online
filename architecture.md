@@ -68,7 +68,15 @@ Priorities-online/
 │   │   ├── db.php                # PDO singleton; config file resolution
 │   │   ├── session.php           # Cookie helpers + dev multi-session support
 │   │   ├── auth.php              # Token validation + role guard helpers
-│   │   └── game_logic.php        # Pure + DB-touching game logic functions
+│   │   ├── game_logic.php        # Pure + DB-touching game logic functions
+│   │   └── Models/               # Readonly value object classes
+│   │       ├── Card.php          # Card data (id, content, category, emoji, letter)
+│   │       ├── Game.php          # Game row (id, status, playerLetters, gameLetters, deckOrder, stateVersion, ...)
+│   │       ├── Lobby.php         # Lobby row (id, code, status, ...)
+│   │       ├── LetterMap.php     # P/R/I/O/T/E/S letter counts; exposes check_win logic
+│   │       ├── Player.php        # Player row (id, name, turnOrder, isHost, status, ...)
+│   │       ├── Round.php         # Round row (id, status, cardIds, targetRanking, groupRanking, ...)
+│   │       └── ScoreResult.php   # One scored position: cardId + correct flag
 │   │
 │   ├── db/
 │   │   ├── schema.sql            # CREATE TABLE statements
@@ -212,7 +220,126 @@ InnoDB automatically creates indexes for all `PRIMARY KEY`, `UNIQUE`, and foreig
 
 ---
 
-## 5. Authentication & Session Model
+## 5. Value Objects (`includes/Models/`)
+
+All domain entities returned from the database are hydrated into **readonly classes** rather than bare associative arrays. This gives every value a documented shape, typed properties, and immutability — preventing accidental mutation after construction.
+
+**Design rule:** Value objects are pure data containers. They hold no DB dependencies and perform no queries. Logic that needs a value object receives it as a parameter.
+
+### `Player`
+```php
+readonly class Player {
+    public function __construct(
+        public int    $id,
+        public int    $lobbyId,
+        public string $name,
+        public string $sessionToken,
+        public bool   $isHost,
+        public int    $turnOrder,
+        public string $status,       // 'active' | 'kicked'
+        public string $joinedAt,
+    ) {}
+}
+```
+
+### `Lobby`
+```php
+readonly class Lobby {
+    public function __construct(
+        public int    $id,
+        public string $code,
+        public string $hostToken,
+        public string $status,       // 'waiting' | 'playing' | 'finished'
+        public string $createdAt,
+        public string $updatedAt,
+    ) {}
+}
+```
+
+### `LetterMap`
+```php
+readonly class LetterMap {
+    public function __construct(
+        public int $P,
+        public int $R,
+        public int $I,
+        public int $O,
+        public int $T,
+        public int $E,
+        public int $S,
+    ) {
+        public function checkWin(): bool { ... }
+        public function withIncrement(string $letter): self { ... }
+        public function toArray(): array { ... }
+    }
+}
+```
+`LetterMap` is the one value object that carries logic: `checkWin()` encapsulates the win condition (P≥1, R≥2, I≥3, O≥1, T≥1, E≥1, S≥1), and `withIncrement()` returns a new `LetterMap` with one letter incremented (immutable update pattern).
+
+### `Game`
+```php
+readonly class Game {
+    public function __construct(
+        public int       $id,
+        public int       $lobbyId,
+        public int       $currentRound,
+        public int       $targetPlayerIndex,
+        public int       $finalDeciderIndex,
+        public string    $status,          // 'active' | 'players_win' | 'game_wins' | 'draw'
+        public LetterMap $playerLetters,
+        public LetterMap $gameLetters,
+        public array     $deckOrder,       // int[]
+        public int       $stateVersion,
+        public string    $createdAt,
+    ) {}
+}
+```
+
+### `Round`
+```php
+readonly class Round {
+    public function __construct(
+        public int     $id,
+        public int     $gameId,
+        public int     $roundNumber,
+        public int     $targetPlayerId,
+        public int     $finalDeciderId,
+        public array   $cardIds,           // int[5]
+        public ?array  $targetRanking,     // int[5] | null
+        public ?array  $groupRanking,      // int[5] | null
+        public ?array  $result,            // ScoreResult[5] | null
+        public string  $status,            // 'ranking' | 'guessing' | 'revealed' | 'skipped'
+        public ?string $rankingDeadline,   // DATETIME string | null
+    ) {}
+}
+```
+
+### `Card`
+```php
+readonly class Card {
+    public function __construct(
+        public int    $id,
+        public string $content,
+        public string $category,
+        public string $emoji,
+        public string $letter,   // one of P/R/I/O/T/E/S
+    ) {}
+}
+```
+
+### `ScoreResult`
+```php
+readonly class ScoreResult {
+    public function __construct(
+        public int  $cardId,
+        public bool $correct,
+    ) {}
+}
+```
+
+---
+
+## 6. Authentication & Session Model
 
 - On `create_lobby.php` or `join_lobby.php`: a 32-byte random token is generated via `bin2hex(random_bytes(32))` (64 hex chars), stored in `players.session_token`, and set as a cookie named `priorities_token` (HttpOnly, SameSite=Strict, path=/, 7-day expiry).
 - Every subsequent API call reads this cookie and looks up the player row. If not found or status='kicked', returns 401.
@@ -228,7 +355,7 @@ InnoDB automatically creates indexes for all `PRIMARY KEY`, `UNIQUE`, and foreig
 
 ---
 
-## 6. API Endpoint Contracts
+## 7. API Endpoint Contracts
 
 All endpoints return `Content-Type: application/json`. On error, they return a JSON object `{"error": "message"}` with an appropriate HTTP status code.
 
@@ -308,36 +435,36 @@ All endpoints return `Content-Type: application/json`. On error, they return a J
 
 ---
 
-## 7. Core Game Logic (`includes/game_logic.php`)
+## 8. Core Game Logic (`includes/game_logic.php`)
 
 All PHP files use `declare(strict_types=1)`. All function signatures have typed parameters and return types. All classes use typed properties. This applies to the entire `includes/` directory, all `api/` endpoints, and all `db/` scripts.
 
 This file is split into two conceptual groups:
 
-### 7.1 Pure Functions (testable without DB)
+### 8.1 Pure Functions (testable without DB)
 
-**`empty_letters(): array`**
-Returns `['P'=>0,'R'=>0,'I'=>0,'O'=>0,'T'=>0,'E'=>0,'S'=>0]`. Used to initialize both letter trackers.
+**`empty_letters(): LetterMap`**
+Returns a `LetterMap` with all counts at zero. Used to initialize both letter trackers.
 
-**`check_win(array $letters): bool`**
-Returns true iff P≥1, R≥2, I≥3, O≥1, T≥1, E≥1, S≥1. This is the only win condition check needed for both sides.
+**`check_win(LetterMap $letters): bool`**
+Returns true iff P≥1, R≥2, I≥3, O≥1, T≥1, E≥1, S≥1. Delegates to `LetterMap::checkWin()`. This is the only win condition check needed for both sides.
 
-**`score_round(array $target_ranking, array $group_ranking): array`**
-Compares two arrays of 5 card IDs position-by-position. Returns 5 items: `[['card_id' => int, 'correct' => bool], ...]`. The `card_id` is always taken from the target's ranking (not the group's), so it tracks which card each position represents.
+**`score_round(Round $round): ScoreResult[]`**
+Compares `$round->targetRanking` against `$round->groupRanking` position-by-position. Returns an array of 5 `ScoreResult` objects. The `cardId` is always taken from the target's ranking so each position is unambiguously identified.
 
 **`deal_cards(array $deck_order, int $count = 5): array`**
-Splices `$count` items from the front of the deck. Returns `[$dealt, $remaining]`. Non-destructive to caller (PHP pass-by-value).
+Splices `$count` items from the front of the deck. Returns `[$dealt, $remaining]` where `$dealt` is `int[]` and `$remaining` is the updated `int[]` deck. Non-destructive to caller (PHP pass-by-value).
 
-**`next_active_player_index(array $active_players, int $current_index, int $skip_turn_order = -1): int`**
+**`next_active_player_index(Player[] $active_players, int $current_index, int $skip_turn_order = -1): int`**
 Advances to the next player index with wrap-around. Optionally skips any player whose `turn_order` equals `$skip_turn_order`. Used to advance both the Target Player and the Final Decider roles. Edge case: if all players have the skip turn_order, falls back to `($current + 1) % count`.
 
-### 7.2 DB-Touching Functions
+### 8.2 DB-Touching Functions
 
-**`get_active_players(int $lobby_id): array`**
-Returns players WHERE status='active' ORDER BY turn_order ASC.
+**`get_active_players(int $lobby_id, PDO $db): Player[]`**
+Returns `Player` objects WHERE status='active' ORDER BY turn_order ASC.
 
-**`award_letters(array $current_letters, array $won_card_ids, PDO $db): array`**
-Looks up the `letter` field for each card ID and increments the corresponding count in the letters array.
+**`award_letters(LetterMap $current_letters, int[] $won_card_ids, PDO $db): LetterMap`**
+Looks up the `letter` field for each card ID and returns a new `LetterMap` with the corresponding counts incremented.
 
 **`bump_version(PDO $db, int $game_id): void`**
 `UPDATE games SET state_version = state_version + 1`.
@@ -345,15 +472,15 @@ Looks up the `letter` field for each card ID and increments the corresponding co
 **`insert_system_chat(PDO $db, int $lobby_id, string $message): void`**
 Inserts a chat row with `player_id = NULL`.
 
-**`create_next_round(PDO $db, int $game_id): bool`**
+**`create_next_round(PDO $db, Game $game): bool`**
 Full round-creation logic: advances target/FD indexes, deals 5 cards from deck, inserts round row (60s deadline), updates games row. Wrapped in an InnoDB transaction to prevent partial state on failure. Returns false if deck has fewer than 5 cards.
 
-**`skip_round(PDO $db, int $game_id, int $round_id, string $skipped_player_name): void`**
+**`skip_round(PDO $db, Game $game, Round $round, string $skipped_player_name): void`**
 Marks current round as 'skipped', returns its 5 cards to the bottom of the deck, inserts system chat, calls `create_next_round`. If deck exhausted, sets game status='draw'.
 
 ---
 
-## 8. Frontend Architecture
+## 9. Frontend Architecture
 
 ### 8.1 Page Flow
 ```
@@ -407,18 +534,18 @@ During the ranking phase, `game.js` displays a live countdown to `ranking_deadli
 
 ---
 
-## 9. Card Data
+## 10. Card Data
 
 185 unique cards are defined in `seed_cards.php`, which is the single authoritative source. `cards.js` at the project root is a legacy file that is not used by the application and may be out of date — ignore it.
 
 Cards have the following categories (used for thematic grouping but not in game mechanics):
 `moral`, `silly`, `social`, `daily`, `survival`, `luxury`, `experience`, `political`, `negative`, `positive`, `ambiguous`, `figure`, `relationship`, `value`
 
-Each card has a `letter` field (one of P/R/I/O/T/E/S) assigned at seed time. The distribution of letters across 185 cards determines the game's balance. The win condition requires 11 cards minimum per side (P×1 + R×2 + I×3 + O×1 + T×1 + E×1 + S×1), so with 185 cards in the deck (~92 rounds), there's ample opportunity to win before the deck runs out.
+Each card has a `letter` field (one of P/R/I/O/T/E/S) assigned at seed time. The distribution of letters across 185 cards determines the game's balance. The win condition requires 10 cards minimum per side (P×1 + R×2 + I×3 + O×1 + T×1 + E×1 + S×1), so with 185 cards in the deck (~92 rounds), there's ample opportunity to win before the deck runs out.
 
 ---
 
-## 10. Turn Order & Role Advancement
+## 11. Turn Order & Role Advancement
 
 At game start:
 - Target Player = index 0 of sorted active players
@@ -437,24 +564,25 @@ The `next_active_player_index` function handles this with the `skip_turn_order` 
 
 ---
 
-## 11. Testing
+## 12. Testing
 
-Only pure (database-free) functions are unit-tested. The test bootstrap (`tests/bootstrap.php`) stubs the DB constants and requires `game_logic.php` directly. No database is needed.
+Only pure (database-free) functions are unit-tested. The test bootstrap (`tests/bootstrap.php`) stubs the DB constants and requires `game_logic.php` and the `Models/` classes directly. No database is needed.
 
 Tested functions:
-- `empty_letters()` — structure and zero values
-- `check_win()` — win/loss for all letter combinations including boundary cases
-- `score_round()` — all correct, none correct, partial; card_id sourcing
+- `empty_letters()` — returns `LetterMap` with all-zero counts
+- `check_win()` / `LetterMap::checkWin()` — win/loss for all letter combinations including boundary cases
+- `score_round()` — returns `ScoreResult[]`; all correct, none correct, partial; cardId sourcing
 - `deal_cards()` — deals from front, default count, full deck
 - `next_active_player_index()` — wrap-around, skip logic, single player, empty list, all-same-turn-order edge case
+- `LetterMap::withIncrement()` — immutability verified; correct letter incremented
 
-Functions with DB dependencies (`award_letters`, `create_next_round`, `skip_round`, etc.) are not tested. The README notes that these could be tested by passing a mock PDO (e.g., SQLite in-memory).
+Functions with DB dependencies (`award_letters`, `create_next_round`, `skip_round`, etc.) are not tested. These could be tested by passing a mock PDO (e.g., SQLite in-memory), constructing the required value objects directly in test setup.
 
 **PHPUnit configuration (`phpunit.xml`):** Standard config pointing at `tests/` directory, using `tests/bootstrap.php`. Test classes use the `Tests\` namespace (PSR-4 via Composer).
 
 ---
 
-## 12. Configuration
+## 13. Configuration
 
 `config.php` (gitignored) defines:
 ```php
@@ -473,7 +601,7 @@ If neither is found, it falls back to hardcoded defaults (empty password). **Do 
 
 ---
 
-## 13. Deployment
+## 14. Deployment
 
 ### Web server configuration
 - Document root: `priorities/` directory
@@ -515,7 +643,7 @@ Then: `php priorities/db/seed_cards.php`
 
 ---
 
-## 14. Key Implicit Constraints & Edge Cases
+## 15. Key Implicit Constraints & Edge Cases
 
 1. **Only one game per lobby** — enforced by `UNIQUE` on `games.lobby_id`. Starting a game twice returns 400.
 2. **Minimum 3 players to start** — enforced in `start_game.php`.
@@ -533,7 +661,7 @@ Then: `php priorities/db/seed_cards.php`
 
 ---
 
-## 15. Recreating in Another Framework — Key Requirements
+## 16. Recreating in Another Framework — Key Requirements
 
 To recreate this project in another stack (e.g., Node.js/Express, Python/FastAPI, Rails), the following must be implemented:
 
