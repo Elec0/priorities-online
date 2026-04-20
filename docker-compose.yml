@@ -1,0 +1,50 @@
+services:
+
+  php:
+    image: php:8.1-apache
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      - ./docker/config.php:/var/www/html/config.php
+    environment:
+      APACHE_DOCUMENT_ROOT: /var/www/html
+    command: >
+      bash -c "
+        docker-php-ext-install pdo pdo_mysql &&
+        a2enmod rewrite &&
+        sed -i 's|DocumentRoot /var/www/html|DocumentRoot /var/www/html|g' /etc/apache2/sites-available/000-default.conf &&
+        pecl install apcu && docker-php-ext-enable apcu &&
+        apache2-foreground
+      "
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: priorities
+      MYSQL_USER: priorities-game
+      MYSQL_PASSWORD: PrioritiesIsAMidGame
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./priorities/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+
+volumes:
+  db_data:

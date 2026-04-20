@@ -1,3 +1,263 @@
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --clr-bg:         #1a1a2e;
+  --clr-surface:    #16213e;
+  --clr-primary:    #e94560;
+  --clr-accent:     #0f3460;
+  --clr-text:       #eaeaea;
+  --clr-muted:      #888;
+  --clr-success:    #4caf50;
+  --clr-error:      #e94560;
+  --clr-warning:    #ff9800;
+  --radius:         8px;
+  --gap:            1rem;
+}
+
+body {
+  background: var(--clr-bg);
+  color: var(--clr-text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.6rem 1.2rem;
+  font-size: 1rem;
+  background: var(--clr-primary);
+  color: #fff;
+  transition: opacity 0.15s;
+}
+button:disabled { opacity: 0.45; cursor: default; }
+button:not(:disabled):hover { opacity: 0.85; }
+
+input[type="text"] {
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--clr-accent);
+  border-radius: var(--radius);
+  background: var(--clr-surface);
+  color: var(--clr-text);
+  font-size: 1rem;
+}
+input[type="text"]:focus { outline: 2px solid var(--clr-primary); }
+
+label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; }
+
+.error-msg { color: var(--clr-error); font-size: 0.9rem; margin-top: 0.5rem; }
+.loading { text-align: center; padding: 3rem; color: var(--clr-muted); }
+
+/* ── Index page ──────────────────────────────────────────────────────────── */
+.index-page {
+  max-width: 440px;
+  margin: 6rem auto 0;
+  padding: 0 1rem;
+}
+
+.logo {
+  text-align: center;
+  font-size: 3rem;
+  color: var(--clr-primary);
+  letter-spacing: 0.1em;
+  margin-bottom: 2rem;
+}
+
+.tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+.tab-btn {
+  flex: 1;
+  background: var(--clr-surface);
+  color: var(--clr-muted);
+  border: 1px solid var(--clr-accent);
+}
+.tab-btn.active {
+  background: var(--clr-primary);
+  color: #fff;
+  border-color: var(--clr-primary);
+}
+
+.lobby-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+/* ── Lobby page ──────────────────────────────────────────────────────────── */
+.lobby-page { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+.lobby-page h1 { color: var(--clr-primary); margin-bottom: 0.5rem; }
+
+.lobby-code { margin-bottom: 1.5rem; color: var(--clr-muted); }
+.lobby-code strong { color: var(--clr-text); font-size: 1.4rem; letter-spacing: 0.15em; }
+
+.lobby-layout { display: flex; gap: 2rem; align-items: flex-start; }
+.lobby-main { flex: 1; }
+
+.player-list { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; margin: 1rem 0; }
+.player-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.6rem 0.8rem;
+  background: var(--clr-surface);
+  border-radius: var(--radius);
+}
+
+.kick-btn {
+  background: transparent;
+  border: 1px solid var(--clr-error);
+  color: var(--clr-error);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.start-btn { width: 100%; margin-top: 1rem; font-size: 1.1rem; padding: 0.75rem; }
+.waiting-msg { color: var(--clr-muted); margin-top: 1.5rem; text-align: center; }
+
+/* ── Game page ───────────────────────────────────────────────────────────── */
+.game-page { display: flex; flex-direction: column; min-height: 100vh; }
+
+.game-header {
+  display: flex;
+  gap: 2rem;
+  justify-content: center;
+  padding: 1rem 2rem;
+  background: var(--clr-surface);
+  border-bottom: 1px solid var(--clr-accent);
+  flex-wrap: wrap;
+}
+
+.game-layout {
+  display: flex;
+  flex: 1;
+  gap: 0;
+}
+
+.game-main {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+.game-sidebar {
+  width: 320px;
+  min-width: 240px;
+  border-left: 1px solid var(--clr-accent);
+  display: flex;
+  flex-direction: column;
+}
+
+.round-info {
+  font-size: 0.9rem;
+  color: var(--clr-muted);
+  margin-bottom: 1rem;
+}
+.target-name { color: var(--clr-primary); font-weight: bold; }
+
+.player-list-section { padding: 1rem; border-bottom: 1px solid var(--clr-accent); }
+.player-list-section h3 { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--clr-muted); }
+.player-item.self { color: var(--clr-primary); }
+
+/* ── Letter tiles ────────────────────────────────────────────────────────── */
+.letter-tiles { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+.tiles-label { font-size: 0.75rem; text-transform: uppercase; color: var(--clr-muted); letter-spacing: 0.1em; }
+.tiles-row { display: flex; gap: 3px; }
+
+.tile {
+  width: 28px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 0.85rem;
+  border-radius: 4px;
+  border: 2px solid transparent;
+}
+.tile.filled  { background: var(--clr-primary); color: #fff; border-color: var(--clr-primary); }
+.tile.hollow  { background: transparent; color: var(--clr-muted); border-color: var(--clr-accent); }
+
+/* ── Phase layouts ───────────────────────────────────────────────────────── */
+.phase { max-width: 520px; }
+.phase-label { margin-bottom: 1rem; font-size: 1rem; }
+
+/* ── Card list ───────────────────────────────────────────────────────────── */
+.card-list { display: flex; flex-direction: column; gap: 0.5rem; margin: 1rem 0; }
+
+.card-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--clr-surface);
+  border-radius: var(--radius);
+  border: 2px solid transparent;
+  user-select: none;
+}
+.card-item.draggable { cursor: grab; }
+.card-item.draggable:active { cursor: grabbing; }
+.card-item.correct   { border-color: var(--clr-success); }
+.card-item.incorrect { border-color: var(--clr-error); }
+
+.card-position { color: var(--clr-muted); font-size: 0.8rem; min-width: 1.4rem; text-align: center; }
+.card-emoji    { font-size: 1.4rem; }
+.card-content  { flex: 1; font-size: 0.95rem; }
+.card-result-icon { font-size: 1.1rem; }
+
+/* ── Countdown ───────────────────────────────────────────────────────────── */
+.countdown { font-size: 0.9rem; color: var(--clr-muted); margin-bottom: 0.75rem; }
+.countdown.countdown-warning { color: var(--clr-warning); font-weight: bold; }
+
+/* ── Action buttons ──────────────────────────────────────────────────────── */
+.action-btn { margin-top: 1rem; padding: 0.75rem 2rem; font-size: 1rem; }
+.lock-btn   { background: #2196f3; }
+.fd-hint    { font-size: 0.8rem; color: var(--clr-muted); margin-top: 0.5rem; }
+
+/* ── Game over ───────────────────────────────────────────────────────────── */
+.game-over-screen { text-align: center; padding: 2rem 0; }
+.game-over-title  { font-size: 2rem; color: var(--clr-primary); margin-bottom: 2rem; }
+.final-letters    { display: flex; gap: 3rem; justify-content: center; flex-wrap: wrap; }
+
+/* ── Revealed phase ──────────────────────────────────────────────────────── */
+.revealed-subtitle { color: var(--clr-muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+
+/* ── Chat panel ──────────────────────────────────────────────────────────── */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  max-height: 340px;
+}
+
+.chat-message { font-size: 0.85rem; line-height: 1.4; }
+.chat-message.system { color: var(--clr-muted); font-style: italic; }
+.chat-message.own .chat-text { color: var(--clr-primary); }
+.chat-author { font-weight: bold; }
+
+.chat-form { display: flex; gap: 0.5rem; }
+.chat-form input { flex: 1; }
+.chat-form button { padding: 0.55rem 1rem; font-size: 0.9rem; flex-shrink: 0; }
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 700px) {
+  .game-layout { flex-direction: column; }
+  .game-sidebar { width: 100%; border-left: none; border-top: 1px solid var(--clr-accent); }
+  .lobby-layout { flex-direction: column; }
+  .game-header  { gap: 1rem; padding: 0.75rem 1rem; }
+}
 /* ============================================================
    style.css — Priorities Game
    ============================================================ */

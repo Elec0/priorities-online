@@ -1,9 +1,12 @@
 <?php
-header('Content-Type: application/json');
+declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
+
+header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -11,65 +14,69 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-try {
-    $player = validate_token();
-    $db     = get_db();
+$db     = get_db();
+$player = require_player($db);
 
-    $g_stmt = $db->prepare(
-        "SELECT g.* FROM games g
-         JOIN lobbies l ON l.id = g.lobby_id
-         WHERE g.lobby_id = ? AND l.status = 'playing'"
-    );
-    $g_stmt->execute([$player['lobby_id']]);
-    $game = $g_stmt->fetch();
-    if (!$game) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No active game found']);
+// APCu rate limit: 10 requests per token per 10 seconds.
+if (function_exists('apcu_fetch')) {
+    $rate_key = 'rate:update_guess:' . $player->sessionToken;
+    $count    = (int) apcu_fetch($rate_key);
+    if ($count >= 10) {
+        http_response_code(429);
+        echo json_encode(['error' => 'Too many requests']);
         exit;
     }
-
-    $round = get_current_round((int)$game['id']);
-    if ($round['status'] !== 'guessing') {
-        http_response_code(400);
-        echo json_encode(['error' => 'Not in guessing phase']);
-        exit;
-    }
-
-    if ((int)$player['id'] === (int)$round['target_player_id']) {
-        http_response_code(403);
-        echo json_encode(['error' => 'The Target Player cannot update the group guess']);
-        exit;
-    }
-
-    $body = json_decode(file_get_contents('php://input'), true);
-    $ranking = $body['ranking'] ?? null;
-
-    if (!is_array($ranking) || count($ranking) !== 5) {
-        http_response_code(400);
-        echo json_encode(['error' => 'ranking must be an array of 5 card IDs']);
-        exit;
-    }
-
-    $card_ids = json_decode($round['card_ids'], true);
-    $ranking  = array_map('intval', $ranking);
-    $card_ids_sorted = $card_ids;
-    sort($card_ids_sorted);
-    $ranking_sorted = $ranking;
-    sort($ranking_sorted);
-
-    if ($card_ids_sorted !== $ranking_sorted) {
-        http_response_code(400);
-        echo json_encode(['error' => 'ranking must contain exactly the 5 drawn card IDs']);
-        exit;
-    }
-
-    $db->prepare("UPDATE rounds SET group_ranking = ? WHERE id = ?")
-       ->execute([json_encode($ranking), $round['id']]);
-
-    bump_version($db, (int)$game['id']);
-
-    echo json_encode(['success' => true]);
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
+    apcu_store($rate_key, $count + 1, 10);
 }
+
+$body = json_decode(file_get_contents('php://input'), true);
+if (!is_array($body) || !isset($body['ranking']) || !is_array($body['ranking'])) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid request body']);
+    exit;
+}
+$ranking = array_map('intval', $body['ranking']);
+
+// Load current guessing round.
+$stmt = $db->prepare(
+    "SELECT r.* FROM rounds r
+     JOIN games g ON g.id = r.game_id
+     WHERE g.lobby_id = :lobby_id AND r.status = 'guessing'
+     ORDER BY r.round_number DESC LIMIT 1"
+);
+$stmt->execute([':lobby_id' => $player->lobbyId]);
+$row = $stmt->fetch();
+
+if ($row === false) {
+    http_response_code(400);
+    echo json_encode(['error' => 'No active guessing round']);
+    exit;
+}
+
+$card_ids = json_decode($row['card_ids'], true);
+$target_player_id = (int) $row['target_player_id'];
+
+// Target player cannot update group guess.
+if ($player->id === $target_player_id) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Target player cannot update group guess']);
+    exit;
+}
+
+// Validate card IDs.
+$submitted_sorted = $ranking;
+$dealt_sorted     = $card_ids;
+sort($submitted_sorted);
+sort($dealt_sorted);
+if ($submitted_sorted !== $dealt_sorted) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Ranking must contain exactly the dealt cards']);
+    exit;
+}
+
+$stmt2 = $db->prepare('UPDATE rounds SET group_ranking = :gr WHERE id = :id');
+$stmt2->execute([':gr' => json_encode($ranking), ':id' => (int) $row['id']]);
+
+bump_version($db, (int) $row['game_id']);
+
+echo json_encode(['success' => true]);

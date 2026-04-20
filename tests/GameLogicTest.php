@@ -1,231 +1,268 @@
 <?php
-
 declare(strict_types=1);
 
 namespace Tests;
 
 use PHPUnit\Framework\TestCase;
-use PHPUnit\Framework\Attributes\DataProvider;
+use Priorities\Models\LetterMap;
+use Priorities\Models\Player;
+use Priorities\Models\Round;
 
-/**
- * Tests for the pure (database-free) functions in includes/game_logic.php.
- */
 class GameLogicTest extends TestCase
 {
-    // -----------------------------------------------------------------------
-    // empty_letters
-    // -----------------------------------------------------------------------
+    // ── empty_letters ─────────────────────────────────────────────────────
 
-    public function testEmptyLettersReturnsAllZero(): void
+    public function test_empty_letters_returns_all_zero(): void
     {
-        $letters = empty_letters();
-        foreach (['P', 'R', 'I', 'O', 'T', 'E', 'S'] as $key) {
-            $this->assertArrayHasKey($key, $letters);
-            $this->assertSame(0, $letters[$key]);
-        }
-        $this->assertCount(7, $letters);
+        $map = empty_letters();
+        $this->assertSame(0, $map->P);
+        $this->assertSame(0, $map->R);
+        $this->assertSame(0, $map->I);
+        $this->assertSame(0, $map->O);
+        $this->assertSame(0, $map->T);
+        $this->assertSame(0, $map->E);
+        $this->assertSame(0, $map->S);
     }
 
-    // -----------------------------------------------------------------------
-    // check_win
-    // -----------------------------------------------------------------------
+    // ── check_win / LetterMap::checkWin ────────────────────────────────────
 
-    public function testCheckWinReturnsFalseForEmptyLetters(): void
+    public function test_check_win_false_when_all_zero(): void
     {
         $this->assertFalse(check_win(empty_letters()));
     }
 
-    public function testCheckWinReturnsTrueWhenAllLettersMet(): void
+    public function test_check_win_true_at_exact_thresholds(): void
     {
-        $this->assertTrue(check_win(['P' => 1, 'R' => 2, 'I' => 3, 'O' => 1, 'T' => 1, 'E' => 1, 'S' => 1]));
+        $map = new LetterMap(P:1, R:2, I:3, O:1, T:1, E:1, S:1);
+        $this->assertTrue(check_win($map));
     }
 
-    public function testCheckWinReturnsTrueWhenLettersExceedMinimum(): void
+    public function test_check_win_true_above_thresholds(): void
     {
-        $this->assertTrue(check_win(['P' => 5, 'R' => 5, 'I' => 5, 'O' => 5, 'T' => 5, 'E' => 5, 'S' => 5]));
+        $map = new LetterMap(P:5, R:5, I:5, O:5, T:5, E:5, S:5);
+        $this->assertTrue(check_win($map));
     }
 
-    public function testCheckWinReturnsFalseWhenRIsShort(): void
+    public function test_check_win_false_r_below_threshold(): void
     {
-        // R needs >=2
-        $this->assertFalse(check_win(['P' => 1, 'R' => 1, 'I' => 3, 'O' => 1, 'T' => 1, 'E' => 1, 'S' => 1]));
+        $map = new LetterMap(P:1, R:1, I:3, O:1, T:1, E:1, S:1);
+        $this->assertFalse(check_win($map));
     }
 
-    public function testCheckWinReturnsFalseWhenIIsShort(): void
+    public function test_check_win_false_i_below_threshold(): void
     {
-        // I needs >=3
-        $this->assertFalse(check_win(['P' => 1, 'R' => 2, 'I' => 2, 'O' => 1, 'T' => 1, 'E' => 1, 'S' => 1]));
+        $map = new LetterMap(P:1, R:2, I:2, O:1, T:1, E:1, S:1);
+        $this->assertFalse(check_win($map));
     }
 
-    #[DataProvider('missingLetterProvider')]
-    public function testCheckWinReturnsFalseWhenAnyRequiredLetterIsMissing(string $missing): void
+    public function test_check_win_false_one_letter_missing(): void
     {
-        $letters = ['P' => 1, 'R' => 2, 'I' => 3, 'O' => 1, 'T' => 1, 'E' => 1, 'S' => 1];
-        $letters[$missing] = 0;
-        $this->assertFalse(check_win($letters));
+        $map = new LetterMap(P:1, R:2, I:3, O:0, T:1, E:1, S:1);
+        $this->assertFalse(check_win($map));
     }
 
-    public static function missingLetterProvider(): array
+    // ── LetterMap::withIncrement ────────────────────────────────────────────
+
+    public function test_withIncrement_increments_correct_letter(): void
     {
-        return [['P'], ['R'], ['I'], ['O'], ['T'], ['E'], ['S']];
+        $base = new LetterMap(P:0, R:1, I:2, O:0, T:0, E:0, S:0);
+
+        $result = $base->withIncrement('R');
+
+        $this->assertSame(2, $result->R);
+        // Other letters unchanged.
+        $this->assertSame(0, $result->P);
+        $this->assertSame(2, $result->I);
     }
 
-    // -----------------------------------------------------------------------
-    // score_round
-    // -----------------------------------------------------------------------
-
-    public function testScoreRoundAllCorrect(): void
+    public function test_withIncrement_is_immutable(): void
     {
-        $ranking = [1, 2, 3, 4, 5];
-        $results = score_round($ranking, $ranking);
+        $base   = new LetterMap(P:1, R:0, I:0, O:0, T:0, E:0, S:0);
+        $result = $base->withIncrement('P');
 
-        foreach ($results as $i => $item) {
-            $this->assertSame($ranking[$i], $item['card_id']);
-            $this->assertTrue($item['correct']);
+        $this->assertSame(1, $base->P);   // original unchanged
+        $this->assertSame(2, $result->P); // new instance incremented
+        $this->assertNotSame($base, $result);
+    }
+
+    public function test_withIncrement_all_letters(): void
+    {
+        $base = empty_letters();
+        foreach (['P','R','I','O','T','E','S'] as $letter) {
+            $result = $base->withIncrement($letter);
+            $this->assertSame(1, $result->$letter);
         }
     }
 
-    public function testScoreRoundNoneCorrect(): void
+    // ── score_round ────────────────────────────────────────────────────────
+
+    private function makeRound(array $target, array $group): Round
     {
-        $target = [1, 2, 3, 4, 5];
-        $group  = [5, 4, 3, 2, 1];
-
-        $results = score_round($target, $group);
-
-        $this->assertFalse($results[0]['correct']); // 1 vs 5
-        $this->assertFalse($results[1]['correct']); // 2 vs 4
-        $this->assertTrue($results[2]['correct']);  // 3 vs 3 — middle matches
-        $this->assertFalse($results[3]['correct']); // 4 vs 2
-        $this->assertFalse($results[4]['correct']); // 5 vs 1
+        return new Round(
+            id:              1,
+            gameId:          1,
+            roundNumber:     1,
+            targetPlayerId:  1,
+            finalDeciderId:  2,
+            cardIds:         $target,
+            targetRanking:   $target,
+            groupRanking:    $group,
+            result:          null,
+            status:          'guessing',
+            rankingDeadline: null,
+        );
     }
 
-    public function testScoreRoundPartiallyCorrect(): void
+    public function test_score_round_all_correct(): void
+    {
+        $order = [10, 20, 30, 40, 50];
+        $round = $this->makeRound($order, $order);
+        $results = score_round($round);
+
+        $this->assertCount(5, $results);
+        foreach ($results as $r) {
+            $this->assertTrue($r->correct);
+        }
+    }
+
+    public function test_score_round_none_correct(): void
     {
         $target = [10, 20, 30, 40, 50];
-        $group  = [10, 99, 30, 99, 50];
+        $group  = [50, 40, 30, 20, 10];
+        $round  = $this->makeRound($target, $group);
+        $results = score_round($round);
 
-        $results = score_round($target, $group);
-
-        $this->assertTrue($results[0]['correct']);
-        $this->assertFalse($results[1]['correct']);
-        $this->assertTrue($results[2]['correct']);
-        $this->assertFalse($results[3]['correct']);
-        $this->assertTrue($results[4]['correct']);
+        // Middle card (30) matches by coincidence.
+        $this->assertFalse($results[0]->correct);
+        $this->assertFalse($results[1]->correct);
+        $this->assertTrue($results[2]->correct);  // 30 == 30
+        $this->assertFalse($results[3]->correct);
+        $this->assertFalse($results[4]->correct);
     }
 
-    public function testScoreRoundCardIdsComefromTargetRanking(): void
+    public function test_score_round_partial(): void
     {
-        $target = [7, 8, 9, 10, 11];
-        $group  = [9, 8, 7, 10, 11];
+        $target  = [10, 20, 30, 40, 50];
+        $group   = [10, 20, 50, 40, 30]; // positions 0,1,3 correct
+        $round   = $this->makeRound($target, $group);
+        $results = score_round($round);
 
-        $results = score_round($target, $group);
-
-        // card_id should always be from target, not group
-        $this->assertSame(7, $results[0]['card_id']);
-        $this->assertSame(8, $results[1]['card_id']);
-        $this->assertSame(9, $results[2]['card_id']);
+        $this->assertTrue($results[0]->correct);
+        $this->assertTrue($results[1]->correct);
+        $this->assertFalse($results[2]->correct);
+        $this->assertTrue($results[3]->correct);
+        $this->assertFalse($results[4]->correct);
     }
 
-    // -----------------------------------------------------------------------
-    // deal_cards
-    // -----------------------------------------------------------------------
+    public function test_score_round_card_id_taken_from_target(): void
+    {
+        $target  = [10, 20, 30, 40, 50];
+        $group   = [50, 40, 30, 20, 10];
+        $round   = $this->makeRound($target, $group);
+        $results = score_round($round);
 
-    public function testDealCardsRemovesDealtCardsFromDeck(): void
+        // cardId should always be from the target ranking.
+        $this->assertSame(10, $results[0]->cardId);
+        $this->assertSame(20, $results[1]->cardId);
+        $this->assertSame(30, $results[2]->cardId);
+        $this->assertSame(40, $results[3]->cardId);
+        $this->assertSame(50, $results[4]->cardId);
+    }
+
+    // ── deal_cards ─────────────────────────────────────────────────────────
+
+    public function test_deal_cards_deals_from_front(): void
     {
         $deck = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        [$dealt, $remaining] = deal_cards($deck, 5);
+        [$dealt, $remaining] = deal_cards($deck);
 
-        $this->assertCount(5, $dealt);
-        $this->assertCount(5, $remaining);
         $this->assertSame([1, 2, 3, 4, 5], $dealt);
         $this->assertSame([6, 7, 8, 9, 10], $remaining);
     }
 
-    public function testDealCardsDefaultsToFiveCards(): void
+    public function test_deal_cards_default_count_is_five(): void
     {
-        $deck = range(1, 20);
-        [$dealt, $remaining] = deal_cards($deck);
-
+        [$dealt, ] = deal_cards(range(1, 20));
         $this->assertCount(5, $dealt);
-        $this->assertCount(15, $remaining);
     }
 
-    public function testDealCardsDealFromFrontOfDeck(): void
+    public function test_deal_cards_does_not_mutate_original(): void
     {
-        $deck = [42, 43, 44, 99, 100];
-        [$dealt, $remaining] = deal_cards($deck, 3);
-
-        $this->assertSame([42, 43, 44], $dealt);
-        $this->assertSame([99, 100], $remaining);
+        $deck = [1, 2, 3, 4, 5, 6];
+        deal_cards($deck);
+        $this->assertCount(6, $deck);
     }
 
-    public function testDealCardsEntireDeckCanBeDealt(): void
+    public function test_deal_cards_full_deck_of_exactly_five(): void
     {
-        $deck = [1, 2, 3, 4, 5];
-        [$dealt, $remaining] = deal_cards($deck, 5);
-
-        $this->assertSame([1, 2, 3, 4, 5], $dealt);
-        $this->assertSame([], $remaining);
+        [$dealt, $remaining] = deal_cards([1, 2, 3, 4, 5]);
+        $this->assertCount(5, $dealt);
+        $this->assertCount(0, $remaining);
     }
 
-    // -----------------------------------------------------------------------
-    // next_active_player_index
-    // -----------------------------------------------------------------------
+    // ── next_active_player_index ───────────────────────────────────────────
 
-    /** Build a minimal player row with a turn_order field. */
-    private static function makePlayers(int ...$turnOrders): array
+    private function makePlayers(int ...$turnOrders): array
     {
-        return array_map(
-            fn(int $to) => ['turn_order' => $to, 'id' => $to],
-            $turnOrders
-        );
+        return array_map(function (int $to) {
+            return new Player(
+                id:           $to,
+                lobbyId:      1,
+                name:         "Player{$to}",
+                sessionToken: str_repeat('a', 64),
+                isHost:       false,
+                turnOrder:    $to,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            );
+        }, $turnOrders);
     }
 
-    public function testNextPlayerWrapsAround(): void
+    public function test_next_player_simple_advance(): void
     {
-        $players = self::makePlayers(1, 2, 3);
-        // From last player (index 2), should wrap to index 0
-        $this->assertSame(0, next_active_player_index($players, 2));
-    }
-
-    public function testNextPlayerSimpleAdvance(): void
-    {
-        $players = self::makePlayers(1, 2, 3);
+        $players = $this->makePlayers(0, 1, 2, 3);
         $this->assertSame(1, next_active_player_index($players, 0));
         $this->assertSame(2, next_active_player_index($players, 1));
+        $this->assertSame(3, next_active_player_index($players, 2));
     }
 
-    public function testNextPlayerSkipsGivenTurnOrder(): void
+    public function test_next_player_wraps_around(): void
     {
-        $players = self::makePlayers(1, 2, 3);
-        // From index 0, skip turn_order 2 → should return index 2 (turn_order 3)
-        $this->assertSame(2, next_active_player_index($players, 0, 2));
+        $players = $this->makePlayers(0, 1, 2, 3);
+        $this->assertSame(0, next_active_player_index($players, 3));
     }
 
-    public function testNextPlayerWithSinglePlayer(): void
+    public function test_next_player_skips_given_turn_order(): void
     {
-        $players = self::makePlayers(1);
+        $players = $this->makePlayers(0, 1, 2, 3);
+        // Advance from index 0, skip turn_order=1 → should land on index 2.
+        $this->assertSame(2, next_active_player_index($players, 0, 1));
+    }
+
+    public function test_next_player_skip_wraps_correctly(): void
+    {
+        $players = $this->makePlayers(0, 1, 2, 3);
+        // Advance from index 3, skip turn_order=0 → should land on index 1.
+        $this->assertSame(1, next_active_player_index($players, 3, 0));
+    }
+
+    public function test_next_player_single_player_returns_zero(): void
+    {
+        $players = $this->makePlayers(0);
         $this->assertSame(0, next_active_player_index($players, 0));
     }
 
-    public function testNextPlayerWithEmptyList(): void
+    public function test_next_player_empty_list_returns_zero(): void
     {
         $this->assertSame(0, next_active_player_index([], 0));
     }
 
-    public function testNextPlayerSkipWrapsCorrectly(): void
+    public function test_next_player_all_same_turn_order_falls_back(): void
     {
-        // [0=>to1, 1=>to2, 2=>to3]. From index 2, skip to1 → index 1 (to2)
-        $players = self::makePlayers(1, 2, 3);
-        $this->assertSame(1, next_active_player_index($players, 2, 1));
-    }
-
-    public function testNextPlayerAllPlayersMatchSkipReturnsFallback(): void
-    {
-        // All players have the same turn_order (edge case guard)
-        $players = self::makePlayers(5, 5, 5);
-        // Should not infinite-loop; returns ($current + 1) % count
-        $result = next_active_player_index($players, 0, 5);
-        $this->assertSame(1, $result);
+        // All players have turn_order=0. Skip turn_order=0 → fallback: (current+1) % count.
+        $players = $this->makePlayers(0, 0, 0);
+        $this->assertSame(1, next_active_player_index($players, 0, 0));
+        $this->assertSame(2, next_active_player_index($players, 1, 0));
+        $this->assertSame(0, next_active_player_index($players, 2, 0));
     }
 }

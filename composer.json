@@ -1,16 +1,18 @@
 {
-    "name": "priorities/priorities-online",
-    "description": "Priorities party game",
-    "type": "project",
-    "require-dev": {
-        "phpunit/phpunit": "^11"
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "Tests\\": "tests/"
-        }
-    },
-    "scripts": {
-        "test": "phpunit"
+  "name": "priorities-online/app",
+  "description": "Priorities Online backend",
+  "type": "project",
+  "require-dev": {
+    "phpunit/phpunit": "^11"
+  },
+  "autoload": {
+    "psr-4": {
+      "Priorities\\": "priorities/includes/"
     }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  }
 }

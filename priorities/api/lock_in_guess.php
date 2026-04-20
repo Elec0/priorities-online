@@ -1,9 +1,17 @@
 <?php
-header('Content-Type: application/json');
+declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
+
+use Priorities\Models\Game;
+use Priorities\Models\LetterMap;
+use Priorities\Models\Round;
+use Priorities\Models\ScoreResult;
+
+header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -11,168 +19,161 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
+$db     = get_db();
+$player = require_player($db);
+
+// Load current guessing round.
+$stmt = $db->prepare(
+    "SELECT r.* FROM rounds r
+     JOIN games g ON g.id = r.game_id
+     WHERE g.lobby_id = :lobby_id AND r.status = 'guessing'
+     ORDER BY r.round_number DESC LIMIT 1"
+);
+$stmt->execute([':lobby_id' => $player->lobbyId]);
+$row = $stmt->fetch();
+
+if ($row === false) {
+    http_response_code(400);
+    echo json_encode(['error' => 'No active guessing round']);
+    exit;
+}
+
+$round = new Round(
+    id:              (int) $row['id'],
+    gameId:          (int) $row['game_id'],
+    roundNumber:     (int) $row['round_number'],
+    targetPlayerId:  (int) $row['target_player_id'],
+    finalDeciderId:  (int) $row['final_decider_id'],
+    cardIds:         json_decode($row['card_ids'], true),
+    targetRanking:   json_decode($row['target_ranking'], true),
+    groupRanking:    $row['group_ranking'] !== null ? json_decode($row['group_ranking'], true) : null,
+    result:          null,
+    status:          $row['status'],
+    rankingDeadline: null,
+);
+
+require_is_final_decider($player, $round);
+
+if ($round->groupRanking === null) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Group ranking not yet set']);
+    exit;
+}
+
+// Load game.
+$game_stmt = $db->prepare('SELECT * FROM games WHERE id = :id LIMIT 1');
+$game_stmt->execute([':id' => $round->gameId]);
+$game_row = $game_stmt->fetch();
+
+$pl_map = json_decode($game_row['player_letters'], true);
+$gl_map = json_decode($game_row['game_letters'], true);
+$game   = new Game(
+    id:                (int) $game_row['id'],
+    lobbyId:           (int) $game_row['lobby_id'],
+    currentRound:      (int) $game_row['current_round'],
+    targetPlayerIndex: (int) $game_row['target_player_index'],
+    finalDeciderIndex: (int) $game_row['final_decider_index'],
+    status:            $game_row['status'],
+    playerLetters:     new LetterMap(...$pl_map),
+    gameLetters:       new LetterMap(...$gl_map),
+    deckOrder:         json_decode($game_row['deck_order'], true),
+    stateVersion:      (int) $game_row['state_version'],
+    createdAt:         $game_row['created_at'],
+);
+
+$db->beginTransaction();
 try {
-    $player = validate_token();
-    $db     = get_db();
-
-    $g_stmt = $db->prepare(
-        "SELECT g.* FROM games g
-         JOIN lobbies l ON l.id = g.lobby_id
-         WHERE g.lobby_id = ? AND l.status = 'playing'"
-    );
-    $g_stmt->execute([$player['lobby_id']]);
-    $game = $g_stmt->fetch();
-    if (!$game) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No active game found']);
-        exit;
-    }
-
-    $round = get_current_round((int)$game['id']);
-    if ($round['status'] !== 'guessing') {
-        http_response_code(400);
-        echo json_encode(['error' => 'Not in guessing phase']);
-        exit;
-    }
-
-    if ((int)$player['id'] !== (int)$round['final_decider_id']) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Only the Final Decider can lock in the guess']);
-        exit;
-    }
-
-    if ($round['group_ranking'] === null) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No group ranking has been set yet']);
-        exit;
-    }
-
-    $target_ranking = json_decode($round['target_ranking'], true);
-    $group_ranking  = json_decode($round['group_ranking'],  true);
-    $results        = score_round($target_ranking, $group_ranking);
+    // Score the round.
+    /** @var ScoreResult[] $results */
+    $results = score_round($round);
 
     $player_won_ids = [];
     $game_won_ids   = [];
     foreach ($results as $r) {
-        if ($r['correct']) {
-            $player_won_ids[] = $r['card_id'];
+        if ($r->correct) {
+            $player_won_ids[] = $r->cardId;
         } else {
-            $game_won_ids[] = $r['card_id'];
+            $game_won_ids[] = $r->cardId;
         }
     }
 
-    $player_letters = json_decode($game['player_letters'], true);
-    $game_letters   = json_decode($game['game_letters'],   true);
+    $new_player_letters = award_letters($game->playerLetters, $player_won_ids, $db);
+    $new_game_letters   = award_letters($game->gameLetters, $game_won_ids, $db);
 
-    $player_letters = award_letters($player_letters, $player_won_ids, $db);
-    $game_letters   = award_letters($game_letters,   $game_won_ids,   $db);
+    $result_json = json_encode(array_map(
+        fn(ScoreResult $r) => ['card_id' => $r->cardId, 'correct' => $r->correct],
+        $results
+    ));
 
-    // Update round
-    $db->prepare("UPDATE rounds SET result = ?, status = 'revealed' WHERE id = ?")
-       ->execute([json_encode($results), $round['id']]);
+    // Update round.
+    $stmt2 = $db->prepare(
+        "UPDATE rounds SET result = :result, status = 'revealed' WHERE id = :id"
+    );
+    $stmt2->execute([':result' => $result_json, ':id' => $round->id]);
 
-    // Determine game status
-    $game_status = 'active';
-    if (check_win($player_letters)) {
-        $game_status = 'players_win';
-    } elseif (check_win($game_letters)) {
-        $game_status = 'game_wins';
+    // Check win conditions.
+    $players_win = check_win($new_player_letters);
+    $game_wins   = check_win($new_game_letters);
+
+    $new_status = 'active';
+    if ($players_win) {
+        $new_status = 'players_win';
+    } elseif ($game_wins) {
+        $new_status = 'game_wins';
     }
 
-    $db->prepare(
-        "UPDATE games SET player_letters = ?, game_letters = ?, status = ? WHERE id = ?"
-    )->execute([
-        json_encode($player_letters),
-        json_encode($game_letters),
-        $game_status,
-        $game['id'],
+    // Update game with new letter counts and possibly new status.
+    $stmt3 = $db->prepare(
+        'UPDATE games SET player_letters = :pl, game_letters = :gl, status = :status WHERE id = :id'
+    );
+    $stmt3->execute([
+        ':pl'     => json_encode($new_player_letters->toArray()),
+        ':gl'     => json_encode($new_game_letters->toArray()),
+        ':status' => $new_status,
+        ':id'     => $game->id,
     ]);
 
-    // Build summary message
     $correct_count = count($player_won_ids);
-    $p_won_letters = array_map(fn($id) => '', $player_won_ids); // will fetch below
-    $g_won_letters = [];
-    if (!empty($player_won_ids) || !empty($game_won_ids)) {
-        $all_won = array_merge($player_won_ids, $game_won_ids);
-        $placeholders = implode(',', array_fill(0, count($all_won), '?'));
-        $ltr_stmt = $db->prepare("SELECT id, letter FROM cards WHERE id IN ($placeholders)");
-        $ltr_stmt->execute($all_won);
-        $id_to_letter = [];
-        while ($row = $ltr_stmt->fetch()) {
-            $id_to_letter[(int)$row['id']] = $row['letter'];
-        }
-        $p_won_letters = array_map(fn($id) => $id_to_letter[$id] ?? '?', $player_won_ids);
-        $g_won_letters = array_map(fn($id) => $id_to_letter[$id] ?? '?', $game_won_ids);
-    }
+    $total         = count($results);
+    $summary       = "Round {$round->roundNumber} complete! {$correct_count}/{$total} correct.";
 
-    $p_str = empty($p_won_letters) ? 'none' : implode(',', $p_won_letters);
-    $g_str = empty($g_won_letters) ? 'none' : implode(',', $g_won_letters);
-    $round_num = (int)$round['round_number'];
+    if ($new_status !== 'active') {
+        $win_msg = match($new_status) {
+            'players_win' => 'Players win! 🎉',
+            'game_wins'   => 'The game wins! 😱',
+            default       => 'Draw!',
+        };
+        insert_system_chat($db, $game->lobbyId, $summary . ' ' . $win_msg);
+    } else {
+        insert_system_chat($db, $game->lobbyId, $summary);
 
-    insert_system_chat(
-        $db,
-        $player['lobby_id'],
-        "Round {$round_num} revealed: {$correct_count}/5 correct! Players won: {$p_str} | Game won: {$g_str}"
-    );
+        // Update game state with the new index values (may have been updated in create_next_round)
+        $updated_game = new Game(
+            id:                $game->id,
+            lobbyId:           $game->lobbyId,
+            currentRound:      $game->currentRound,
+            targetPlayerIndex: $game->targetPlayerIndex,
+            finalDeciderIndex: $game->finalDeciderIndex,
+            status:            $new_status,
+            playerLetters:     $new_player_letters,
+            gameLetters:       $new_game_letters,
+            deckOrder:         $game->deckOrder,
+            stateVersion:      $game->stateVersion,
+            createdAt:         $game->createdAt,
+        );
 
-    // Create next round if game is still active
-    if ($game_status === 'active') {
-        $active_players = get_active_players($player['lobby_id']);
-        $target_idx = (int)$game['target_player_index'];
-        $fd_idx     = (int)$game['final_decider_index'];
-
-        $new_target_idx = next_active_player_index($active_players, $target_idx, -1);
-        $new_target = $active_players[$new_target_idx];
-
-        $new_fd_idx = next_active_player_index($active_players, $fd_idx, (int)$new_target['turn_order']);
-        $new_fd     = $active_players[$new_fd_idx];
-
-        // Reload deck_order (game was updated above but not fetched)
-        $deck_stmt = $db->prepare("SELECT deck_order FROM games WHERE id = ?");
-        $deck_stmt->execute([$game['id']]);
-        $current_deck = json_decode($deck_stmt->fetchColumn(), true);
-
-        if (count($current_deck) < 5) {
-            // Deck exhausted without a win → draw
-            $db->prepare("UPDATE games SET status = 'draw' WHERE id = ?")->execute([$game['id']]);
-            insert_system_chat($db, $player['lobby_id'], "The deck is empty — it's a draw!");
-        } else {
-            [$dealt, $remaining] = deal_cards($current_deck, 5);
-            $new_round_number = (int)$game['current_round'] + 1;
-
-            $db->prepare(
-                "INSERT INTO rounds (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
-                 VALUES (?, ?, ?, ?, ?, 'ranking', DATE_ADD(NOW(), INTERVAL 60 SECOND))"
-            )->execute([
-                $game['id'],
-                $new_round_number,
-                (int)$new_target['id'],
-                (int)$new_fd['id'],
-                json_encode($dealt),
-            ]);
-
-            $db->prepare(
-                "UPDATE games SET current_round = ?, target_player_index = ?, final_decider_index = ?, deck_order = ? WHERE id = ?"
-            )->execute([
-                $new_round_number,
-                $new_target_idx,
-                $new_fd_idx,
-                json_encode($remaining),
-                $game['id'],
-            ]);
-
-            insert_system_chat(
-                $db,
-                $player['lobby_id'],
-                "Round {$new_round_number} started! {$new_target['name']} is ranking their cards…"
-            );
+        if (!create_next_round($db, $updated_game)) {
+            $stmt4 = $db->prepare("UPDATE games SET status = 'draw' WHERE id = :id");
+            $stmt4->execute([':id' => $game->id]);
+            insert_system_chat($db, $game->lobbyId, 'The deck ran out! The game is a draw.');
         }
     }
 
-    bump_version($db, (int)$game['id']);
-
-    echo json_encode(['success' => true]);
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
+    bump_version($db, $game->id);
+    $db->commit();
+} catch (Throwable $e) {
+    $db->rollBack();
+    throw $e;
 }
+
+echo json_encode(['success' => true]);

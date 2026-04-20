@@ -1,68 +1,40 @@
 <?php
+declare(strict_types=1);
 
-if (!defined('DEV_MULTI_SESSION')) define('DEV_MULTI_SESSION', false);
-
-function is_dev_multi_session_enabled(): bool {
-    return (bool)DEV_MULTI_SESSION;
-}
-
-function normalize_dev_profile(?string $value): string {
-    $value = trim((string)$value);
-    if ($value === '') {
+/** Return the dev profile string (empty string when not in dev mode). */
+function get_dev_profile(): string
+{
+    if (!defined('DEV_MULTI_SESSION') || !DEV_MULTI_SESSION) {
         return '';
     }
-
-    $value = preg_replace('/[^A-Za-z0-9_-]/', '', $value) ?? '';
-    return substr($value, 0, 20);
+    $profile = $_GET['dev_profile'] ?? $_POST['dev_profile'] ?? '';
+    return preg_replace('/[^a-zA-Z0-9_-]/', '', (string) $profile);
 }
 
-function get_dev_profile(): string {
-    if (!is_dev_multi_session_enabled()) {
-        return '';
-    }
-
-    if (isset($_POST['dev_profile'])) {
-        return normalize_dev_profile($_POST['dev_profile']);
-    }
-
-    if (isset($_GET['dev_profile'])) {
-        return normalize_dev_profile($_GET['dev_profile']);
-    }
-
-    return '';
+/** Return the cookie name, optionally namespaced by dev profile. */
+function get_cookie_name(): string
+{
+    $profile = get_dev_profile();
+    return $profile !== '' ? "priorities_token_{$profile}" : 'priorities_token';
 }
 
-function get_session_cookie_name(?string $profile = null): string {
-    $profile = $profile ?? get_dev_profile();
-    return $profile === '' ? 'priorities_token' : 'priorities_token_' . $profile;
+/** Read the session token from the cookie. Returns null if absent. */
+function get_token(): ?string
+{
+    $name = get_cookie_name();
+    $token = $_COOKIE[$name] ?? null;
+    return is_string($token) && strlen($token) === 64 ? $token : null;
 }
 
-function get_session_token(): ?string {
-    $cookie_name = get_session_cookie_name();
-    $token = $_COOKIE[$cookie_name] ?? null;
-    return $token === '' ? null : $token;
-}
-
-function set_session_cookie(string $token): void {
-    setcookie(get_session_cookie_name(), $token, [
-        'expires'  => time() + 86400 * 7,
+/** Set the auth cookie on the response. */
+function set_token_cookie(string $token): void
+{
+    $name = get_cookie_name();
+    setcookie($name, $token, [
+        'expires'  => time() + 7 * 24 * 3600,
+        'path'     => '/',
         'httponly' => true,
         'samesite' => 'Strict',
-        'path'     => '/',
+        'secure'   => isset($_SERVER['HTTPS']),
     ]);
 }
-
-function build_path(string $path, array $params = []): string {
-    $profile = get_dev_profile();
-    if ($profile !== '') {
-        $params['dev_profile'] = $profile;
-    }
-
-    $query = http_build_query(array_filter(
-        $params,
-        static fn($value) => $value !== null && $value !== ''
-    ));
-
-    return $query === '' ? $path : $path . '?' . $query;
-}
-

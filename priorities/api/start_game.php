@@ -1,9 +1,12 @@
 <?php
-header('Content-Type: application/json');
+declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
+
+header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -11,80 +14,75 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-try {
-    $host = require_host();
-    $db   = get_db();
+$db     = get_db();
+$player = require_host($db);
 
-    // Fetch lobby
-    $l_stmt = $db->prepare("SELECT * FROM lobbies WHERE id = ?");
-    $l_stmt->execute([$host['lobby_id']]);
-    $lobby = $l_stmt->fetch();
-
-    if ($lobby['status'] !== 'waiting') {
-        http_response_code(400);
-        echo json_encode(['error' => 'Game already started']);
-        exit;
-    }
-
-    $active_players = get_active_players($host['lobby_id']);
-    if (count($active_players) < 3) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Need at least 3 players to start']);
-        exit;
-    }
-
-    // Shuffle all card IDs for deck
-    $card_stmt = $db->query("SELECT id FROM cards ORDER BY id");
-    $all_ids = $card_stmt->fetchAll(PDO::FETCH_COLUMN);
-    shuffle($all_ids);
-    $deck_order = array_values($all_ids);
-
-    $empty = empty_letters();
-    $player_letters = $empty;
-    $game_letters   = $empty;
-
-    // target starts at index 0
-    $target_idx = 0;
-    $target = $active_players[$target_idx];
-
-    // FD is next active player after target, skipping the target's turn_order
-    $fd_idx = next_active_player_index($active_players, $target_idx, (int)$target['turn_order']);
-    $fd = $active_players[$fd_idx];
-
-    // Deal 5 cards
-    [$dealt, $remaining_deck] = deal_cards($deck_order, 5);
-
-    $db->prepare(
-        "INSERT INTO games (lobby_id, current_round, target_player_index, final_decider_index,
-         status, player_letters, game_letters, deck_order, state_version)
-         VALUES (?, 1, ?, ?, 'active', ?, ?, ?, 1)"
-    )->execute([
-        $host['lobby_id'],
-        $target_idx,
-        $fd_idx,
-        json_encode($player_letters),
-        json_encode($game_letters),
-        json_encode($remaining_deck),
-    ]);
-    $game_id = (int)$db->lastInsertId();
-
-    $db->prepare(
-        "INSERT INTO rounds (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
-         VALUES (?, 1, ?, ?, ?, 'ranking', DATE_ADD(NOW(), INTERVAL 60 SECOND))"
-    )->execute([
-        $game_id,
-        (int)$target['id'],
-        (int)$fd['id'],
-        json_encode($dealt),
-    ]);
-
-    $db->prepare("UPDATE lobbies SET status = 'playing', updated_at = NOW() WHERE id = ?")
-       ->execute([$host['lobby_id']]);
-
-    insert_system_chat($db, $host['lobby_id'], "Game started! {$target['name']} is ranking their cards…");
-
-    echo json_encode(['success' => true, 'game_id' => $game_id]);
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Server error: ' . $e->getMessage()]);
+// Ensure no game exists yet for this lobby.
+$stmt = $db->prepare('SELECT COUNT(*) FROM games WHERE lobby_id = :lobby_id');
+$stmt->execute([':lobby_id' => $player->lobbyId]);
+if ((int) $stmt->fetchColumn() > 0) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Game already started']);
+    exit;
 }
+
+$active_players = get_active_players($player->lobbyId, $db);
+if (count($active_players) < 3) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Need at least 3 players to start']);
+    exit;
+}
+
+// Shuffle all card IDs.
+$stmt2 = $db->prepare('SELECT id FROM cards');
+$stmt2->execute();
+$card_ids = array_column($stmt2->fetchAll(), 'id');
+shuffle($card_ids);
+
+// Deal first 5 cards.
+[$dealt, $remaining] = deal_cards($card_ids);
+
+$empty = empty_letters();
+
+$db->beginTransaction();
+try {
+    $stmt3 = $db->prepare(
+        "INSERT INTO games
+         (lobby_id, current_round, target_player_index, final_decider_index,
+          status, player_letters, game_letters, deck_order, state_version)
+         VALUES (:lobby_id, 1, 0, 1, 'active', :pl, :gl, :deck, 1)"
+    );
+    $stmt3->execute([
+        ':lobby_id' => $player->lobbyId,
+        ':pl'       => json_encode($empty->toArray()),
+        ':gl'       => json_encode($empty->toArray()),
+        ':deck'     => json_encode($remaining),
+    ]);
+    $game_id = (int) $db->lastInsertId();
+
+    $target_player = $active_players[0];
+    $fd_player     = $active_players[1];
+
+    $stmt4 = $db->prepare(
+        "INSERT INTO rounds
+         (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
+         VALUES (:game_id, 1, :target_id, :fd_id, :card_ids, 'ranking',
+                 DATE_ADD(NOW(), INTERVAL 60 SECOND))"
+    );
+    $stmt4->execute([
+        ':game_id'   => $game_id,
+        ':target_id' => $target_player->id,
+        ':fd_id'     => $fd_player->id,
+        ':card_ids'  => json_encode($dealt),
+    ]);
+
+    $stmt5 = $db->prepare("UPDATE lobbies SET status = 'playing' WHERE id = :id");
+    $stmt5->execute([':id' => $player->lobbyId]);
+
+    $db->commit();
+} catch (Throwable $e) {
+    $db->rollBack();
+    throw $e;
+}
+
+echo json_encode(['success' => true, 'game_id' => $game_id]);
