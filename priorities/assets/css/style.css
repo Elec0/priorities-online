@@ -551,6 +551,10 @@ button { cursor: pointer; font-family: inherit; }
 /* ============================================================
    GAME OVER
    ============================================================ */
+.game-over[hidden] {
+    display: none;
+}
+
 .game-over {
     position: absolute;
     inset: 0;

@@ -9,6 +9,7 @@ let countdownTimer = null;
 let sortableInst   = null;
 let chatOpen       = true;
 let lastRoundStatus = null;
+let hasRenderedState = false;
 
 // --- Polling ---
 
@@ -22,8 +23,14 @@ async function poll() {
         const res  = await fetch(`/priorities/api/poll.php?lobby_id=${lobbyId}&state_version=${stateVersion}`);
         const data = await res.json();
         if (data.error) return;
-        stateVersion = data.state_version;
-        renderState(data);
+        const nextStateVersion = parseInt(data.state_version, 10) || 0;
+        const shouldRenderState = !hasRenderedState || nextStateVersion !== stateVersion;
+
+        stateVersion = nextStateVersion;
+        if (shouldRenderState) {
+            renderState(data);
+            hasRenderedState = true;
+        }
         renderChat(data.chat || []);
     } catch (e) {}
 }
