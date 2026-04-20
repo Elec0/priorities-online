@@ -659,6 +659,10 @@ button { cursor: pointer; font-family: inherit; }
 /* ============================================================
    KICKED OVERLAY
    ============================================================ */
+.kicked-overlay[hidden] {
+    display: none;
+}
+
 .kicked-overlay {
     position: fixed;
     inset: 0;
