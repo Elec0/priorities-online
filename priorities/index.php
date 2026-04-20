@@ -1,3 +1,10 @@
+<?php
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/session.php';
+
+$dev_multi_session = is_dev_multi_session_enabled();
+$dev_profile = get_dev_profile();
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,6 +29,15 @@
                     <label for="create-name">Your name</label>
                     <input type="text" id="create-name" name="name" maxlength="50" placeholder="Enter your name" required>
                 </div>
+                <?php if ($dev_multi_session): ?>
+                <div class="form-group">
+                    <label for="create-dev-profile">Dev profile</label>
+                    <input type="text" id="create-dev-profile" name="dev_profile" maxlength="20"
+                           placeholder="host"
+                           value="<?= htmlspecialchars($dev_profile, ENT_QUOTES) ?>">
+                </div>
+                <p>Dev mode: use a different profile name in each tab or window to simulate multiple players.</p>
+                <?php endif; ?>
                 <div id="create-error" class="form-error" hidden></div>
                 <button type="submit" class="btn btn-primary" id="create-btn">Create Lobby</button>
             </form>
@@ -36,6 +52,14 @@
                     <label for="join-name">Your name</label>
                     <input type="text" id="join-name" name="name" maxlength="50" placeholder="Enter your name" required>
                 </div>
+                <?php if ($dev_multi_session): ?>
+                <div class="form-group">
+                    <label for="join-dev-profile">Dev profile</label>
+                    <input type="text" id="join-dev-profile" name="dev_profile" maxlength="20"
+                           placeholder="player2"
+                           value="<?= htmlspecialchars($dev_profile, ENT_QUOTES) ?>">
+                </div>
+                <?php endif; ?>
                 <div class="form-group">
                     <label for="join-code">Lobby code</label>
                     <input type="text" id="join-code" name="code" maxlength="6" minlength="6"
@@ -66,7 +90,7 @@
             const res = await fetch('/priorities/api/create_lobby.php', { method: 'POST', body: fd });
             const data = await res.json();
             if (data.success) {
-                window.location.href = '/priorities/lobby.php?lobby_id=' + data.lobby_id;
+                window.location.href = data.redirect_url || ('/priorities/lobby.php?lobby_id=' + data.lobby_id);
             } else {
                 errEl.textContent = data.error || 'Unknown error';
                 errEl.hidden = false;
@@ -94,7 +118,7 @@
             const res = await fetch('/priorities/api/join_lobby.php', { method: 'POST', body: fd });
             const data = await res.json();
             if (data.success) {
-                window.location.href = '/priorities/lobby.php?lobby_id=' + data.lobby_id;
+                window.location.href = data.redirect_url || ('/priorities/lobby.php?lobby_id=' + data.lobby_id);
             } else {
                 errEl.textContent = data.error || 'Unknown error';
                 errEl.hidden = false;

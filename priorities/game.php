@@ -1,24 +1,28 @@
 <?php
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/session.php';
 
 $lobby_id = isset($_GET['lobby_id']) ? (int)$_GET['lobby_id'] : 0;
 if (!$lobby_id) {
-    header('Location: /priorities/');
+    header('Location: ' . build_path('/priorities/'));
     exit;
 }
 
 $player = null;
-if (!empty($_COOKIE['priorities_token'])) {
+if (($token = get_session_token()) !== null) {
     $db = get_db();
     $stmt = $db->prepare("SELECT * FROM players WHERE session_token = ? AND status = 'active' AND lobby_id = ?");
-    $stmt->execute([$_COOKIE['priorities_token'], $lobby_id]);
+    $stmt->execute([$token, $lobby_id]);
     $player = $stmt->fetch();
 }
 
 if (!$player) {
-    header('Location: /priorities/');
+    header('Location: ' . build_path('/priorities/'));
     exit;
 }
+
+$dev_profile = get_dev_profile();
+$home_url = build_path('/priorities/');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -31,7 +35,8 @@ if (!$player) {
 </head>
 <body class="game-page"
       data-lobby-id="<?= $lobby_id ?>"
-      data-player-id="<?= (int)$player['id'] ?>">
+      data-player-id="<?= (int)$player['id'] ?>"
+      data-dev-profile="<?= htmlspecialchars($dev_profile, ENT_QUOTES) ?>">
 
     <div class="game-layout">
         <!-- Left sidebar: player list -->
@@ -61,7 +66,7 @@ if (!$player) {
                 <div class="game-over-inner">
                     <div id="game-over-banner" class="game-over-banner"></div>
                     <div id="game-over-letters" class="game-over-letters"></div>
-                    <a href="/priorities/" class="btn btn-primary btn-large">Return to Home</a>
+                    <a href="<?= htmlspecialchars($home_url, ENT_QUOTES) ?>" class="btn btn-primary btn-large">Return to Home</a>
                 </div>
             </div>
         </main>

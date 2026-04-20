@@ -2,6 +2,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/session.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -41,18 +42,14 @@ try {
     )->execute([$lobby_id, $name, $token]);
     $player_id = (int)$db->lastInsertId();
 
-    setcookie('priorities_token', $token, [
-        'expires'  => time() + 86400 * 7,
-        'httponly' => true,
-        'samesite' => 'Strict',
-        'path'     => '/',
-    ]);
+    set_session_cookie($token);
 
     echo json_encode([
         'success'   => true,
         'code'      => $code,
         'lobby_id'  => $lobby_id,
         'player_id' => $player_id,
+        'redirect_url' => build_path('/priorities/lobby.php', ['lobby_id' => $lobby_id]),
     ]);
 } catch (Exception $e) {
     http_response_code(500);

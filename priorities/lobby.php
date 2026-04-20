@@ -1,23 +1,24 @@
 <?php
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/session.php';
 
 $lobby_id = isset($_GET['lobby_id']) ? (int)$_GET['lobby_id'] : 0;
 if (!$lobby_id) {
-    header('Location: /priorities/');
+    header('Location: ' . build_path('/priorities/'));
     exit;
 }
 
 // Validate token and get player
 $player = null;
-if (!empty($_COOKIE['priorities_token'])) {
+if (($token = get_session_token()) !== null) {
     $db = get_db();
     $stmt = $db->prepare("SELECT * FROM players WHERE session_token = ? AND status = 'active' AND lobby_id = ?");
-    $stmt->execute([$_COOKIE['priorities_token'], $lobby_id]);
+    $stmt->execute([$token, $lobby_id]);
     $player = $stmt->fetch();
 }
 
 if (!$player) {
-    header('Location: /priorities/');
+    header('Location: ' . build_path('/priorities/'));
     exit;
 }
 
@@ -26,9 +27,12 @@ $l_stmt = $db->prepare("SELECT status FROM lobbies WHERE id = ?");
 $l_stmt->execute([$lobby_id]);
 $lobby = $l_stmt->fetch();
 if ($lobby && $lobby['status'] === 'playing') {
-    header('Location: /priorities/game.php?lobby_id=' . $lobby_id);
+    header('Location: ' . build_path('/priorities/game.php', ['lobby_id' => $lobby_id]));
     exit;
 }
+
+$dev_profile = get_dev_profile();
+$home_url = build_path('/priorities/');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -41,7 +45,8 @@ if ($lobby && $lobby['status'] === 'playing') {
 <body class="lobby-page"
       data-lobby-id="<?= $lobby_id ?>"
       data-player-id="<?= (int)$player['id'] ?>"
-      data-is-host="<?= (int)$player['is_host'] ?>">
+      data-is-host="<?= (int)$player['is_host'] ?>"
+      data-dev-profile="<?= htmlspecialchars($dev_profile, ENT_QUOTES) ?>">
 
     <div class="lobby-container">
         <header class="lobby-header">
@@ -83,7 +88,7 @@ if ($lobby && $lobby['status'] === 'playing') {
         <div class="kicked-modal">
             <h2>You've been removed</h2>
             <p>The host has removed you from this lobby.</p>
-            <a href="/priorities/" class="btn btn-primary">Back to Home</a>
+            <a href="<?= htmlspecialchars($home_url, ENT_QUOTES) ?>" class="btn btn-primary">Back to Home</a>
         </div>
     </div>
 

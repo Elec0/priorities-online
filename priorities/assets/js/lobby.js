@@ -3,11 +3,25 @@
 const lobbyId    = parseInt(document.body.dataset.lobbyId, 10);
 const myPlayerId = parseInt(document.body.dataset.playerId, 10);
 const isHost     = document.body.dataset.isHost === '1';
+const devProfile = document.body.dataset.devProfile || '';
 
 let stateVersion  = 0;
 let pollTimer     = null;
 let lastChatId    = null;
 let kickedByHost  = false;
+
+function buildUrl(path, params = {}) {
+    const url = new URL(path, window.location.origin);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            url.searchParams.set(key, value);
+        }
+    });
+    if (devProfile) {
+        url.searchParams.set('dev_profile', devProfile);
+    }
+    return `${url.pathname}${url.search}`;
+}
 
 function startPolling() {
     poll();
@@ -16,13 +30,16 @@ function startPolling() {
 
 async function poll() {
     try {
-        const res  = await fetch(`/priorities/api/poll.php?lobby_id=${lobbyId}&state_version=${stateVersion}`);
+        const res  = await fetch(buildUrl('/priorities/api/poll.php', {
+            lobby_id: lobbyId,
+            state_version: stateVersion,
+        }));
         const data = await res.json();
         if (data.error) return;
 
         if (data.lobby_status === 'playing') {
             clearInterval(pollTimer);
-            window.location.href = `/priorities/game.php?lobby_id=${lobbyId}`;
+            window.location.href = buildUrl('/priorities/game.php', { lobby_id: lobbyId });
             return;
         }
 
@@ -121,7 +138,7 @@ function renderLobby(data) {
 async function kickPlayer(playerId, name) {
     if (!confirm(`Remove ${name} from the lobby?`)) return;
     try {
-        await fetch('/priorities/api/kick_player.php', {
+        await fetch(buildUrl('/priorities/api/kick_player.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ player_id: playerId }),
@@ -135,11 +152,11 @@ if (startBtn) {
         startBtn.disabled = true;
         startBtn.textContent = 'Starting…';
         try {
-            const res  = await fetch('/priorities/api/start_game.php', { method: 'POST' });
+            const res  = await fetch(buildUrl('/priorities/api/start_game.php'), { method: 'POST' });
             const data = await res.json();
             if (data.success) {
                 clearInterval(pollTimer);
-                window.location.href = `/priorities/game.php?lobby_id=${lobbyId}`;
+                window.location.href = buildUrl('/priorities/game.php', { lobby_id: lobbyId });
             } else {
                 alert(data.error || 'Failed to start game');
                 startBtn.disabled = false;
@@ -179,7 +196,7 @@ document.getElementById('chat-form').addEventListener('submit', async function(e
     if (!message) return;
     input.value = '';
     try {
-        await fetch('/priorities/api/send_message.php', {
+        await fetch(buildUrl('/priorities/api/send_message.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message }),

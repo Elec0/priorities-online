@@ -142,9 +142,12 @@ define('DB_HOST', 'localhost');
 define('DB_NAME', 'priorities');
 define('DB_USER', 'priorities');
 define('DB_PASS', 'your_password');
+define('DEV_MULTI_SESSION', false);
 ```
 
 The app also checks for a `config.php` one directory above `priorities/` (i.e. alongside it, outside the web root), which is the preferred location for production.
+
+Set `DEV_MULTI_SESSION` to `true` for local development if you want to simulate multiple players from one browser.
 
 ---
 
@@ -200,6 +203,18 @@ composer test
 Add test classes under `tests/`, following the `Tests\` namespace (PSR-4 autoloaded via `composer.json`). The bootstrap at `tests/bootstrap.php` pre-loads `game_logic.php` with DB constants stubbed out, so any test of pure functions works without a live database.
 
 For tests that need database interaction, pass a mock or in-memory PDO (e.g. SQLite) directly to the function under test.
+
+### Dev multi-session mode
+
+When `DEV_MULTI_SESSION` is enabled, the home page shows a **Dev profile** field on create/join forms.
+
+Use a different profile value in each tab or window, for example:
+
+1. `host`
+2. `p2`
+3. `p3`
+
+Each profile gets its own auth cookie, so you can create a lobby in one tab and join it from other tabs in the same browser without the sessions overwriting each other.
 
 ---
 

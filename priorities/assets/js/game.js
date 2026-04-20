@@ -2,6 +2,7 @@
 
 const lobbyId    = parseInt(document.body.dataset.lobbyId, 10);
 const myPlayerId = parseInt(document.body.dataset.playerId, 10);
+const devProfile = document.body.dataset.devProfile || '';
 
 let stateVersion   = 0;
 let pollTimer      = null;
@@ -10,6 +11,19 @@ let sortableInst   = null;
 let chatOpen       = true;
 let lastRoundStatus = null;
 let hasRenderedState = false;
+
+function buildUrl(path, params = {}) {
+    const url = new URL(path, window.location.origin);
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            url.searchParams.set(key, value);
+        }
+    });
+    if (devProfile) {
+        url.searchParams.set('dev_profile', devProfile);
+    }
+    return `${url.pathname}${url.search}`;
+}
 
 // --- Polling ---
 
@@ -20,7 +34,10 @@ function startPolling() {
 
 async function poll() {
     try {
-        const res  = await fetch(`/priorities/api/poll.php?lobby_id=${lobbyId}&state_version=${stateVersion}`);
+        const res  = await fetch(buildUrl('/priorities/api/poll.php', {
+            lobby_id: lobbyId,
+            state_version: stateVersion,
+        }));
         const data = await res.json();
         if (data.error) return;
         const nextStateVersion = parseInt(data.state_version, 10) || 0;
@@ -121,7 +138,7 @@ async function submitRanking() {
     if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
 
     try {
-        const res  = await fetch('/priorities/api/submit_ranking.php', {
+        const res  = await fetch(buildUrl('/priorities/api/submit_ranking.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ranking: ids }),
@@ -218,7 +235,7 @@ async function sendGuess() {
     const ids = Array.from(list.querySelectorAll('[data-card-id]'))
                      .map(el => parseInt(el.dataset.cardId, 10));
     try {
-        await fetch('/priorities/api/update_guess.php', {
+        await fetch(buildUrl('/priorities/api/update_guess.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ranking: ids }),
@@ -230,7 +247,7 @@ async function lockInGuess() {
     const btn = document.querySelector('.btn-danger');
     if (btn) { btn.disabled = true; btn.textContent = 'Locking in…'; }
     try {
-        const res  = await fetch('/priorities/api/lock_in_guess.php', { method: 'POST' });
+        const res  = await fetch(buildUrl('/priorities/api/lock_in_guess.php'), { method: 'POST' });
         const data = await res.json();
         if (!data.success) {
             alert(data.error || 'Failed to lock in');
@@ -530,7 +547,7 @@ document.getElementById('chat-form').addEventListener('submit', async function(e
     if (!message) return;
     input.value = '';
     try {
-        await fetch('/priorities/api/send_message.php', {
+        await fetch(buildUrl('/priorities/api/send_message.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message }),

@@ -1,17 +1,19 @@
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/session.php';
 
 /**
  * Validates the session token from the priorities_token cookie.
  * Returns the player row array, or sends a 401 JSON response and exits.
  */
 function validate_token(): array {
-    if (empty($_COOKIE['priorities_token'])) {
+    $token = get_session_token();
+    if ($token === null) {
         http_response_code(401);
         echo json_encode(['error' => 'No session token']);
         exit;
     }
-    $token = $_COOKIE['priorities_token'];
+
     $db = get_db();
     $stmt = $db->prepare("SELECT * FROM players WHERE session_token = ? AND status = 'active'");
     $stmt->execute([$token]);
