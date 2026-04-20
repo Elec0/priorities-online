@@ -13,6 +13,8 @@ error_reporting(E_ALL);
 
 require_once __DIR__ . '/../includes/db.php';
 
+// TODO: Make a non-UK version with some different cards (e.g. replace Marmite, Brunch, Pubs, and a few others with more internationally relevant ones)
+// TODO: Stop hardcoding the IDs and instead generate them based on the order in the array, so we don't duplicate strings
 $cards = [
     ['id'=>1,   'content'=>'Living sustainably',                  'category'=>'moral',        'emoji'=>'♻️'],
     ['id'=>2,   'content'=>'Marmite',                              'category'=>'silly',        'emoji'=>'🧂'],
