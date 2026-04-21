@@ -18,7 +18,7 @@ $dev_profile = get_dev_profile();
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Game — Priorities</title>
+  <title>Priorities — Game</title>
   <link rel="stylesheet" href="/priorities/assets/css/style.css">
 </head>
 <body>

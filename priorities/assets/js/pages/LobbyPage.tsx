@@ -60,7 +60,10 @@ export function LobbyPage() {
           <ul className="player-list">
             {lobbyState?.players.map(p => (
               <li key={p.id} className="player-item">
-                <span>{p.name}{p.is_host ? ' 👑' : ''}</span>
+                <span>
+                  {p.name}
+                  {p.is_host && <span className="role-icon" title="Host">👑</span>}
+                </span>
                 {isHost && p.id !== playerId && (
                   <button
                     className="kick-btn"

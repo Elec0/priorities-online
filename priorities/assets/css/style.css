@@ -171,6 +171,7 @@ label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; 
 .player-list-section { padding: 1rem; border-bottom: 1px solid var(--clr-accent); }
 .player-list-section h3 { margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--clr-muted); }
 .player-item.self { color: var(--clr-primary); }
+.role-icon { display: inline; margin-left: 0.3rem; vertical-align: baseline; }
 
 /* ── Letter tiles ────────────────────────────────────────────────────────── */
 .letter-tiles { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
@@ -490,7 +491,7 @@ button { cursor: pointer; font-family: inherit; }
 .player-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     padding: 0.75rem 1rem;
     background: var(--bg2);
     border: 1px solid var(--border);

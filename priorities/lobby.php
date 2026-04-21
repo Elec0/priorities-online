@@ -19,7 +19,7 @@ $is_host    = $player->isHost ? '1' : '0';
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lobby — Priorities</title>
+  <title>Priorities — Lobby</title>
   <link rel="stylesheet" href="/priorities/assets/css/style.css">
 </head>
 <body>

@@ -69,8 +69,9 @@ export function GamePage() {
               {players.map(p => (
                 <li key={p.id} className={`player-item${p.id === playerId ? ' self' : ''}`}>
                   {p.name}
-                  {p.id === gameState.target_player.id  && ' 🎯'}
-                  {p.id === gameState.final_decider.id  && ' 🔒'}
+                  {p.is_host && <span className="role-icon" title="Host">👑</span>}
+                  {p.id === gameState.target_player.id  && <span className="role-icon" title="Target Player">🎯</span>}
+                  {p.id === gameState.final_decider.id  && <span className="role-icon" title="Final Decider">🔒</span>}
                 </li>
               ))}
             </ul>
