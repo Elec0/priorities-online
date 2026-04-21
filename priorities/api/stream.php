@@ -64,12 +64,12 @@ function build_state_payload(int $lobby_id, PDO $db): array
 
     $game = hydrate_game($game_row);
 
-    // Prioritise revealed > guessing > ranking so that clients always see the
-    // revealed results before the next ranking round appears.
+    // Prioritise active rounds (ranking/guessing) over revealed so the revealed screen
+    // stays visible until next_round.php is called, then the new ranking round takes over.
     $stmt5 = $db->prepare(
         "SELECT * FROM rounds WHERE game_id = :game_id
          ORDER BY
-           CASE status WHEN 'guessing' THEN 0 WHEN 'revealed' THEN 1 WHEN 'ranking' THEN 2 ELSE 3 END ASC,
+           CASE status WHEN 'ranking' THEN 0 WHEN 'guessing' THEN 1 WHEN 'revealed' THEN 2 ELSE 3 END ASC,
            round_number DESC
          LIMIT 1"
     );
@@ -246,11 +246,54 @@ while ((time() - $start) < $hold_duration) {
         $game_row = $game_stmt->fetch();
 
         if ($game_row !== false) {
-            $game  = hydrate_game($game_row);
-            $round = hydrate_round($timed_out);
+            // Atomically claim the round by flipping it out of 'ranking'.
+            // Only the first stream to win this UPDATE will proceed; others get 0 rows.
+            $claim_stmt = $db->prepare(
+                "UPDATE rounds SET status = 'skipped' WHERE id = :id AND status = 'ranking'"
+            );
+            $claim_stmt->execute([':id' => $timed_out['id']]);
 
-            $target_player = fetch_player_by_id($round->targetPlayerId, $db);
-            skip_round($db, $game, $round, $target_player->name);
+            if ($claim_stmt->rowCount() === 1) {
+                $game  = hydrate_game($game_row);
+                $round = hydrate_round($timed_out);
+
+                $target_player = fetch_player_by_id($round->targetPlayerId, $db);
+
+                // skip_round does UPDATE rounds SET status='skipped' itself,
+                // but we already did it above — call the rest of the work directly.
+                $new_deck = array_merge($game->deckOrder, $round->cardIds);
+
+                $db->prepare('UPDATE games SET deck_order = :deck WHERE id = :id')
+                   ->execute([':deck' => json_encode($new_deck), ':id' => $game->id]);
+
+                insert_system_chat(
+                    $db,
+                    $lobby_id,
+                    "{$target_player->name} ran out of time! Round skipped."
+                );
+
+                $updated_game = new Game(
+                    id:                $game->id,
+                    lobbyId:           $game->lobbyId,
+                    currentRound:      $game->currentRound,
+                    targetPlayerIndex: $game->targetPlayerIndex,
+                    finalDeciderIndex: $game->finalDeciderIndex,
+                    status:            $game->status,
+                    playerLetters:     $game->playerLetters,
+                    gameLetters:       $game->gameLetters,
+                    deckOrder:         $new_deck,
+                    stateVersion:      $game->stateVersion,
+                    createdAt:         $game->createdAt,
+                );
+
+                if (!create_next_round($db, $updated_game)) {
+                    $db->prepare("UPDATE games SET status = 'draw' WHERE id = :id")
+                       ->execute([':id' => $game->id]);
+                    insert_system_chat($db, $lobby_id, 'The deck ran out! The game is a draw.');
+                }
+
+                bump_version($db, $game->id);
+            }
         }
     }
 

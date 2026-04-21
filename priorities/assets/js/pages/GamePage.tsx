@@ -33,7 +33,7 @@ export function GamePage() {
     switch (round.status) {
       case 'ranking':  return <RankingPhase  state={gameState} playerId={playerId} />;
       case 'guessing': return <GuessingPhase state={gameState} playerId={playerId} />;
-      case 'revealed': return <RevealedPhase state={gameState} />;
+      case 'revealed': return <RevealedPhase state={gameState} playerId={playerId} />;
       case 'skipped':  return <div className="phase skipped-phase">Round skipped. Starting next round…</div>;
     }
   }
@@ -43,6 +43,12 @@ export function GamePage() {
       <header className="game-header">
         <LetterTiles label="Players" letters={player_letters} />
         <LetterTiles label="Game"    letters={game_letters} />
+        <button
+          className="dev-dump-btn"
+          onClick={() => { console.log('[DEV] gameState', gameState); }}
+        >
+          DEV: Dump State
+        </button>
       </header>
 
       <div className="game-layout">

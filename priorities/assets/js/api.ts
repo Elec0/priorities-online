@@ -1,8 +1,13 @@
 const BASE = '/priorities/api';
 
+function devProfileParam(): string {
+  const p = new URLSearchParams(window.location.search).get('dev_profile');
+  return p ? `?dev_profile=${encodeURIComponent(p)}` : '';
+}
+
 async function post<T>(endpoint: string, body: Record<string, unknown> | FormData): Promise<T> {
   const isFormData = body instanceof FormData;
-  const res = await fetch(`${BASE}/${endpoint}`, {
+  const res = await fetch(`${BASE}/${endpoint}${devProfileParam()}`, {
     method: 'POST',
     headers: isFormData ? undefined : { 'Content-Type': 'application/json' },
     body: isFormData ? body : JSON.stringify(body),
@@ -67,6 +72,10 @@ export function updateGuess(ranking: number[]): Promise<{ success: true }> {
 
 export function lockInGuess(): Promise<{ success: true }> {
   return post('lock_in_guess.php', {});
+}
+
+export function nextRound(): Promise<{ success: true }> {
+  return post('next_round.php', {});
 }
 
 // ── Social ────────────────────────────────────────────────────────────────────

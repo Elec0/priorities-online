@@ -161,27 +161,6 @@ try {
         insert_system_chat($db, $game->lobbyId, $summary . ' ' . $win_msg);
     } else {
         insert_system_chat($db, $game->lobbyId, $summary);
-
-        // Update game state with the new index values (may have been updated in create_next_round)
-        $updated_game = new Game(
-            id:                $game->id,
-            lobbyId:           $game->lobbyId,
-            currentRound:      $game->currentRound,
-            targetPlayerIndex: $game->targetPlayerIndex,
-            finalDeciderIndex: $game->finalDeciderIndex,
-            status:            $new_status,
-            playerLetters:     $new_player_letters,
-            gameLetters:       $new_game_letters,
-            deckOrder:         $game->deckOrder,
-            stateVersion:      $game->stateVersion,
-            createdAt:         $game->createdAt,
-        );
-
-        if (!create_next_round($db, $updated_game)) {
-            $stmt4 = $db->prepare("UPDATE games SET status = 'draw' WHERE id = :id");
-            $stmt4->execute([':id' => $game->id]);
-            insert_system_chat($db, $game->lobbyId, 'The deck ran out! The game is a draw.');
-        }
     }
 
     bump_version($db, $game->id);

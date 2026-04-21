@@ -14,7 +14,7 @@ export function CountdownTimer({ deadline }: Props) {
       return;
     }
 
-    const deadlineMs = new Date(deadline).getTime();
+    const deadlineMs = new Date(deadline.endsWith('Z') ? deadline : deadline + 'Z').getTime();
 
     function tick() {
       const secs = Math.max(0, Math.round((deadlineMs - Date.now()) / 1000));
