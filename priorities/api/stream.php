@@ -163,42 +163,6 @@ function fetch_player_by_id(int $id, PDO $db): Player
     );
 }
 
-function hydrate_game(array $row): Game
-{
-    $pl = json_decode($row['player_letters'], true);
-    $gl = json_decode($row['game_letters'], true);
-    return new Game(
-        id:                (int) $row['id'],
-        lobbyId:           (int) $row['lobby_id'],
-        currentRound:      (int) $row['current_round'],
-        targetPlayerIndex: (int) $row['target_player_index'],
-        finalDeciderIndex: (int) $row['final_decider_index'],
-        status:            $row['status'],
-        playerLetters:     new LetterMap(...$pl),
-        gameLetters:       new LetterMap(...$gl),
-        deckOrder:         json_decode($row['deck_order'], true),
-        stateVersion:      (int) $row['state_version'],
-        createdAt:         $row['created_at'],
-    );
-}
-
-function hydrate_round(array $row): Round
-{
-    return new Round(
-        id:              (int) $row['id'],
-        gameId:          (int) $row['game_id'],
-        roundNumber:     (int) $row['round_number'],
-        targetPlayerId:  (int) $row['target_player_id'],
-        finalDeciderId:  (int) $row['final_decider_id'],
-        cardIds:         json_decode($row['card_ids'], true),
-        targetRanking:   $row['target_ranking'] !== null ? json_decode($row['target_ranking'], true) : null,
-        groupRanking:    $row['group_ranking'] !== null ? json_decode($row['group_ranking'], true) : null,
-        result:          $row['result'] !== null ? json_decode($row['result'], true) : null,
-        status:          $row['status'],
-        rankingDeadline: $row['ranking_deadline'],
-    );
-}
-
 // ── SSE stream ────────────────────────────────────────────────────────────────
 
 $db = get_db();

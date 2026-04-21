@@ -26,10 +26,19 @@ export function RevealedPhase({ state, playerId }: Props) {
     }
   }
 
-  // Render cards in target_ranking order to show what the target chose.
+  // Render cards in target_ranking order (left column).
   const targetOrder = round.target_ranking ?? round.card_ids;
-  const orderedCards = targetOrder.map(id => round.cards.find(c => c.id === id)!);
+  const targetCards = targetOrder.map(id => round.cards.find(c => c.id === id)!);
   const results: ScoreResultState[] = round.result ?? [];
+
+  // Build a card_id → result map so both columns can share the same coloring.
+  const resultByCardId = new Map<number, ScoreResultState>(results.map(r => [r.card_id, r]));
+  const targetResults  = targetCards.map(c => resultByCardId.get(c.id))  as ScoreResultState[];
+
+  // Right column: group's guess ordering.
+  const groupOrder = round.group_ranking ?? round.card_ids;
+  const groupCards   = groupOrder.map(id => round.cards.find(c => c.id === id)!);
+  const groupResults = groupCards.map(c => resultByCardId.get(c.id)) as ScoreResultState[];
 
   const correctCount = results.filter(r => r.correct).length;
 
@@ -38,15 +47,16 @@ export function RevealedPhase({ state, playerId }: Props) {
       <p className="phase-label">
         Round {round.number} — {correctCount}/{results.length} correct!
       </p>
-      <p className="revealed-subtitle">
-        {target_player.name}'s actual ranking:
-      </p>
-
-      <CardList
-        cards={orderedCards}
-        draggable={false}
-        results={results}
-      />
+      <div className="reveal-cols">
+        <div className="reveal-col">
+          <p className="revealed-col-label">{target_player.name}'s actual ranking</p>
+          <CardList cards={targetCards} draggable={false} results={targetResults} />
+        </div>
+        <div className="reveal-col">
+          <p className="revealed-col-label">Group's guess</p>
+          <CardList cards={groupCards} draggable={false} results={groupResults} />
+        </div>
+      </div>
 
       {canContinue ? (
         <button className="action-btn" onClick={handleContinue} disabled={advancing}>
