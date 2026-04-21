@@ -54,10 +54,25 @@ $round = new Round(
 
 require_is_final_decider($player, $round);
 
+// If no explicit group ranking has been set yet, fall back to the dealt order.
+$effectiveGroupRanking = $round->groupRanking ?? $round->cardIds;
 if ($round->groupRanking === null) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Group ranking not yet set']);
-    exit;
+    // Persist the fallback so score_round sees it.
+    $set_stmt = $db->prepare("UPDATE rounds SET group_ranking = :gr WHERE id = :id");
+    $set_stmt->execute([':gr' => json_encode($effectiveGroupRanking), ':id' => $round->id]);
+    $round = new Round(
+        id:              $round->id,
+        gameId:          $round->gameId,
+        roundNumber:     $round->roundNumber,
+        targetPlayerId:  $round->targetPlayerId,
+        finalDeciderId:  $round->finalDeciderId,
+        cardIds:         $round->cardIds,
+        targetRanking:   $round->targetRanking,
+        groupRanking:    $effectiveGroupRanking,
+        result:          null,
+        status:          $round->status,
+        rankingDeadline: null,
+    );
 }
 
 // Load game.

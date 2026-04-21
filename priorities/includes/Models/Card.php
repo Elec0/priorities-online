@@ -3,13 +3,13 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-readonly class Card
+class Card
 {
     public function __construct(
-        public int    $id,
-        public string $content,
-        public string $category,
-        public string $emoji,
-        public string $letter,
+        public readonly int    $id,
+        public readonly string $content,
+        public readonly string $category,
+        public readonly string $emoji,
+        public readonly string $letter,
     ) {}
 }

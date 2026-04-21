@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/../../vendor/autoload.php';
+
 use Priorities\Models\Card;
 use Priorities\Models\Game;
 use Priorities\Models\LetterMap;
@@ -163,64 +165,56 @@ function create_next_round(PDO $db, Game $game): bool
         return false;
     }
 
-    $db->beginTransaction();
-    try {
-        $active_players = get_active_players($game->lobbyId, $db);
+    $active_players = get_active_players($game->lobbyId, $db);
 
-        $new_target_index = next_active_player_index(
-            $active_players,
-            $game->targetPlayerIndex
-        );
-        $new_target_turn_order = $active_players[$new_target_index]->turnOrder;
+    $new_target_index = next_active_player_index(
+        $active_players,
+        $game->targetPlayerIndex
+    );
+    $new_target_turn_order = $active_players[$new_target_index]->turnOrder;
 
-        $new_fd_index = next_active_player_index(
-            $active_players,
-            $game->finalDeciderIndex,
-            $new_target_turn_order
-        );
+    $new_fd_index = next_active_player_index(
+        $active_players,
+        $game->finalDeciderIndex,
+        $new_target_turn_order
+    );
 
-        [$dealt, $remaining] = deal_cards($game->deckOrder);
+    [$dealt, $remaining] = deal_cards($game->deckOrder);
 
-        $target_player = $active_players[$new_target_index];
-        $fd_player     = $active_players[$new_fd_index];
+    $target_player = $active_players[$new_target_index];
+    $fd_player     = $active_players[$new_fd_index];
 
-        $round_number = $game->currentRound + 1;
+    $round_number = $game->currentRound + 1;
 
-        $stmt = $db->prepare(
-            'INSERT INTO rounds
-             (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
-             VALUES (:game_id, :round_number, :target_id, :fd_id, :card_ids, \'ranking\',
-                     DATE_ADD(NOW(), INTERVAL 60 SECOND))'
-        );
-        $stmt->execute([
-            ':game_id'      => $game->id,
-            ':round_number' => $round_number,
-            ':target_id'    => $target_player->id,
-            ':fd_id'        => $fd_player->id,
-            ':card_ids'     => json_encode($dealt),
-        ]);
+    $stmt = $db->prepare(
+        'INSERT INTO rounds
+         (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
+         VALUES (:game_id, :round_number, :target_id, :fd_id, :card_ids, \'ranking\',
+                 DATE_ADD(NOW(), INTERVAL 60 SECOND))'
+    );
+    $stmt->execute([
+        ':game_id'      => $game->id,
+        ':round_number' => $round_number,
+        ':target_id'    => $target_player->id,
+        ':fd_id'        => $fd_player->id,
+        ':card_ids'     => json_encode($dealt),
+    ]);
 
-        $stmt2 = $db->prepare(
-            'UPDATE games
-             SET current_round        = :round_number,
-                 target_player_index  = :target_index,
-                 final_decider_index  = :fd_index,
-                 deck_order           = :deck_order
-             WHERE id = :id'
-        );
-        $stmt2->execute([
-            ':round_number'  => $round_number,
-            ':target_index'  => $new_target_index,
-            ':fd_index'      => $new_fd_index,
-            ':deck_order'    => json_encode($remaining),
-            ':id'            => $game->id,
-        ]);
-
-        $db->commit();
-    } catch (Throwable $e) {
-        $db->rollBack();
-        throw $e;
-    }
+    $stmt2 = $db->prepare(
+        'UPDATE games
+         SET current_round        = :round_number,
+             target_player_index  = :target_index,
+             final_decider_index  = :fd_index,
+             deck_order           = :deck_order
+         WHERE id = :id'
+    );
+    $stmt2->execute([
+        ':round_number'  => $round_number,
+        ':target_index'  => $new_target_index,
+        ':fd_index'      => $new_fd_index,
+        ':deck_order'    => json_encode($remaining),
+        ':id'            => $game->id,
+    ]);
 
     return true;
 }

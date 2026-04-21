@@ -64,8 +64,14 @@ function build_state_payload(int $lobby_id, PDO $db): array
 
     $game = hydrate_game($game_row);
 
+    // Prioritise revealed > guessing > ranking so that clients always see the
+    // revealed results before the next ranking round appears.
     $stmt5 = $db->prepare(
-        "SELECT * FROM rounds WHERE game_id = :game_id ORDER BY round_number DESC LIMIT 1"
+        "SELECT * FROM rounds WHERE game_id = :game_id
+         ORDER BY
+           CASE status WHEN 'guessing' THEN 0 WHEN 'revealed' THEN 1 WHEN 'ranking' THEN 2 ELSE 3 END ASC,
+           round_number DESC
+         LIMIT 1"
     );
     $stmt5->execute([':game_id' => $game->id]);
     $round_row = $stmt5->fetch();
@@ -218,6 +224,7 @@ if (ob_get_level()) ob_end_flush();
 $hold_duration = 30;
 $poll_interval = 300_000; // 300ms in microseconds
 $start         = time();
+$first_iter    = true;
 
 while ((time() - $start) < $hold_duration) {
     // Check for timed-out ranking rounds.
@@ -256,16 +263,18 @@ while ((time() - $start) < $hold_duration) {
 
     $server_ver = $ver_row !== false ? (int) $ver_row['state_version'] : 0;
 
-    if ($server_ver !== $client_ver) {
-        // Check APCu cache.
-        $cache_key = "game:lobby:{$lobby_id}:{$server_ver}";
+    if ($first_iter || $server_ver !== $client_ver) {
+        $first_iter = false;
+        // Only cache playing-lobby state; waiting-lobby state changes on
+        // every join/leave but the version stays 0, so we must not cache it.
+        $cache_key = $server_ver > 0 ? "game:lobby:{$lobby_id}:{$server_ver}" : null;
         $payload   = false;
-        if (function_exists('apcu_fetch')) {
+        if ($cache_key !== null && function_exists('apcu_fetch')) {
             $payload = apcu_fetch($cache_key);
         }
         if ($payload === false) {
             $payload = json_encode(build_state_payload($lobby_id, $db));
-            if (function_exists('apcu_store')) {
+            if ($cache_key !== null && function_exists('apcu_store')) {
                 apcu_store($cache_key, $payload, 60);
             }
         }

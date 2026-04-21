@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-readonly class ScoreResult
+class ScoreResult
 {
     public function __construct(
-        public int  $cardId,
-        public bool $correct,
+        public readonly int  $cardId,
+        public readonly bool $correct,
     ) {}
 }

@@ -22,6 +22,7 @@ node_modules/
 npm-debug.log*
 *.cache
 package-lock.json
+test-results/
 
 # Vite build output (compiled JS is committed from dist/ for deployment)
 # Uncomment to ignore dist if you prefer not to commit compiled output:

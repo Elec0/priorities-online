@@ -3,14 +3,14 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-readonly class Lobby
+class Lobby
 {
     public function __construct(
-        public int    $id,
-        public string $code,
-        public string $hostToken,
-        public string $status,
-        public string $createdAt,
-        public string $updatedAt,
+        public readonly int    $id,
+        public readonly string $code,
+        public readonly string $hostToken,
+        public readonly string $status,
+        public readonly string $createdAt,
+        public readonly string $updatedAt,
     ) {}
 }
