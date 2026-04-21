@@ -150,6 +150,47 @@ This project is designed to run on Apache shared hosting (e.g., GoDaddy) with no
 4. Run `seed_cards.php` to populate the card table
 5. Ensure `mod_rewrite` is enabled and `.htaccess` is allowed
 
+### Applying DB Migrations On Deploy
+
+This project includes a migration runner at [priorities/db/migrate.php](priorities/db/migrate.php) that:
+
+- creates a `schema_migrations` tracking table if needed
+- applies pending `.sql` files from [priorities/db/migrations](priorities/db/migrations) in filename order
+- prevents edited historical migrations via checksum validation
+
+Run in dry-run mode first:
+
+```bash
+php priorities/db/migrate.php --dry-run
+```
+
+If your database already had historical changes applied manually (before this script existed),
+baseline once by marking current migration files as applied without executing SQL:
+
+```bash
+php priorities/db/migrate.php --mark-applied
+```
+
+Then apply:
+
+```bash
+php priorities/db/migrate.php
+```
+
+Or via Composer:
+
+```bash
+composer migrate
+```
+
+Recommended release order for schema changes:
+
+1. Backup production database
+2. Deploy application code
+3. Run migrations
+4. Restart PHP process/container (to clear APCu)
+5. Smoke test lobby/game flow
+
 ## Architecture
 
 See [architecture.md](architecture.md) for a detailed breakdown of design decisions, the SSE state sync model, APCu caching strategy, and role-based access control.

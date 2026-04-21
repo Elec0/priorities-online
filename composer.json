@@ -17,5 +17,8 @@
     "psr-4": {
       "Tests\\": "tests/"
     }
+  },
+  "scripts": {
+    "migrate": "php priorities/db/migrate.php"
   }
 }
