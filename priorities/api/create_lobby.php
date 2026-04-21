@@ -19,6 +19,12 @@ if ($name === '' || mb_strlen($name) > 50) {
     exit;
 }
 
+$timer_enabled = filter_var($_POST['timer_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+$timer_seconds = (int) ($_POST['timer_seconds'] ?? 60);
+if ($timer_seconds < 10 || $timer_seconds > 600) {
+    $timer_seconds = 60;
+}
+
 $db = get_db();
 
 // Generate a unique 6-char uppercase lobby code.
@@ -33,9 +39,9 @@ $token = bin2hex(random_bytes(32));
 $db->beginTransaction();
 try {
     $stmt = $db->prepare(
-        "INSERT INTO lobbies (code, host_token, status) VALUES (:code, :token, 'waiting')"
+        "INSERT INTO lobbies (code, host_token, status, timer_enabled, timer_seconds) VALUES (:code, :token, 'waiting', :timer_enabled, :timer_seconds)"
     );
-    $stmt->execute([':code' => $code, ':token' => $token]);
+    $stmt->execute([':code' => $code, ':token' => $token, ':timer_enabled' => (int) $timer_enabled, ':timer_seconds' => $timer_seconds]);
     $lobby_id = (int) $db->lastInsertId();
 
     $stmt2 = $db->prepare(

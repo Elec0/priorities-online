@@ -7,12 +7,14 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- ── lobbies ──────────────────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS `lobbies` (
-  `id`         INT          NOT NULL AUTO_INCREMENT,
-  `code`       VARCHAR(6)   NOT NULL,
-  `host_token` VARCHAR(64)  NOT NULL,
-  `status`     ENUM('waiting','playing','finished') NOT NULL DEFAULT 'waiting',
-  `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `id`            INT          NOT NULL AUTO_INCREMENT,
+  `code`          VARCHAR(6)   NOT NULL,
+  `host_token`    VARCHAR(64)  NOT NULL,
+  `status`        ENUM('waiting','playing','finished') NOT NULL DEFAULT 'waiting',
+  `timer_enabled` TINYINT(1)   NOT NULL DEFAULT 1,
+  `timer_seconds` INT          NOT NULL DEFAULT 60,
+  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_code` (`code`),
   KEY `idx_status` (`status`)

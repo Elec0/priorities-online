@@ -29,9 +29,11 @@ export interface CreateLobbyResponse {
   redirect_url: string;
 }
 
-export function createLobby(name: string, devProfile?: string): Promise<CreateLobbyResponse> {
+export function createLobby(name: string, timerEnabled: boolean, timerSeconds: number, devProfile?: string): Promise<CreateLobbyResponse> {
   const fd = new FormData();
   fd.append('name', name);
+  fd.append('timer_enabled', timerEnabled ? '1' : '0');
+  fd.append('timer_seconds', String(timerSeconds));
   if (devProfile) fd.append('dev_profile', devProfile);
   return post<CreateLobbyResponse>('create_lobby.php', fd);
 }

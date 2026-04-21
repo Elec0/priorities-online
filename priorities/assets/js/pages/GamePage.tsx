@@ -43,12 +43,12 @@ export function GamePage() {
       <header className="game-header">
         <LetterTiles label="Players" letters={player_letters} />
         <LetterTiles label="Game"    letters={game_letters} />
-        <button
+        {/* <button
           className="dev-dump-btn"
           onClick={() => { console.log('[DEV] gameState', gameState); }}
         >
           DEV: Dump State
-        </button>
+        </button> */}
       </header>
 
       <div className="game-layout">

@@ -8,11 +8,13 @@ function getDevProfile(): string {
 }
 
 export function IndexPage() {
-  const [tab, setTab]         = useState<Tab>('create');
-  const [name, setName]       = useState('');
-  const [code, setCode]       = useState('');
-  const [error, setError]     = useState('');
-  const [loading, setLoading] = useState(false);
+  const [tab, setTab]               = useState<Tab>('create');
+  const [name, setName]             = useState('');
+  const [code, setCode]             = useState('');
+  const [timerEnabled, setTimerEnabled] = useState(true);
+  const [timerSeconds, setTimerSeconds] = useState(60);
+  const [error, setError]           = useState('');
+  const [loading, setLoading]       = useState(false);
 
   const devProfile = getDevProfile();
 
@@ -21,7 +23,7 @@ export function IndexPage() {
     setError('');
     setLoading(true);
     try {
-      const res = await createLobby(name, devProfile || undefined);
+      const res = await createLobby(name, timerEnabled, timerSeconds, devProfile || undefined);
       window.location.href = res.redirect_url;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create lobby');
@@ -76,6 +78,27 @@ export function IndexPage() {
               onChange={e => setName(e.target.value)}
             />
           </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={timerEnabled}
+              onChange={e => setTimerEnabled(e.target.checked)}
+            />
+            Enable ranking timer
+          </label>
+          {timerEnabled && (
+            <label>
+              Timer duration (seconds)
+              <input
+                type="number"
+                value={timerSeconds}
+                min={10}
+                max={600}
+                required
+                onChange={e => setTimerSeconds(Number(e.target.value))}
+              />
+            </label>
+          )}
           <button type="submit" disabled={loading}>
             {loading ? 'Creating…' : 'Create Lobby'}
           </button>

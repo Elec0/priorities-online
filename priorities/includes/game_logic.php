@@ -224,11 +224,22 @@ function create_next_round(PDO $db, Game $game): bool
 
     $round_number = $game->currentRound + 1;
 
+    // Look up timer settings from the lobby.
+    $timer_stmt = $db->prepare('SELECT timer_enabled, timer_seconds FROM lobbies WHERE id = :id');
+    $timer_stmt->execute([':id' => $game->lobbyId]);
+    $timer_row     = $timer_stmt->fetch();
+    $timer_enabled = $timer_row !== false && (bool) $timer_row['timer_enabled'];
+    $timer_seconds = $timer_row !== false ? max(10, (int) $timer_row['timer_seconds']) : 60;
+
+    $deadline_sql = $timer_enabled
+        ? "DATE_ADD(NOW(), INTERVAL {$timer_seconds} SECOND)"
+        : 'NULL';
+
     $stmt = $db->prepare(
-        'INSERT INTO rounds
+        "INSERT INTO rounds
          (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
-         VALUES (:game_id, :round_number, :target_id, :fd_id, :card_ids, \'ranking\',
-                 DATE_ADD(NOW(), INTERVAL 60 SECOND))'
+         VALUES (:game_id, :round_number, :target_id, :fd_id, :card_ids, 'ranking',
+                 {$deadline_sql})"
     );
     $stmt->execute([
         ':game_id'      => $game->id,
