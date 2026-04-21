@@ -111,4 +111,57 @@ test.describe('Game flow', () => {
       await Promise.all(contexts.map(c => c.close()));
     }
   });
+
+  test('cards are randomized: target and final decider both accept initial order without changes, should not be 5/5 correct', async ({ browser }) => {
+    const { pages, contexts } = await startThreePlayerGame(browser);
+    try {
+      // ── Ranking phase ────────────────────────────────────────────────────
+      // Find the target (only page with the submit button).
+      let targetPage: Page | undefined;
+      for (const p of pages) {
+        if (await p.locator('button.action-btn', { hasText: 'Submit My Ranking' }).isVisible()) {
+          targetPage = p;
+          break;
+        }
+      }
+      expect(targetPage).toBeDefined();
+
+      // Target submits WITHOUT changing the order (accepts initial random order).
+      await targetPage!.locator('button.action-btn', { hasText: 'Submit My Ranking' }).click();
+
+      // ── Guessing phase ───────────────────────────────────────────────────
+      await Promise.all(
+        pages.map(p => expect(p.locator('.guessing-phase')).toBeVisible({ timeout: 15_000 })),
+      );
+
+      // Find the final decider (non-target with the lock-in button).
+      let finalDeciderPage: Page | undefined;
+      for (const p of pages) {
+        if (p !== targetPage && await p.locator('button.lock-btn').isVisible()) {
+          finalDeciderPage = p;
+          break;
+        }
+      }
+      expect(finalDeciderPage).toBeDefined();
+
+      // Final decider locks in WITHOUT changing the order (accepts initial random order).
+      await finalDeciderPage!.locator('button.lock-btn').click();
+
+      // ── Revealed phase ───────────────────────────────────────────────────
+      await Promise.all(
+        pages.map(p => expect(p.locator('.revealed-phase')).toBeVisible({ timeout: 15_000 })),
+      );
+
+      // Verify that the score is NOT 5/5 correct (meaning cards were actually randomized).
+      for (const p of pages) {
+        const scoreLabel = p.locator('.revealed-phase .phase-label');
+        await expect(scoreLabel).toContainText(/\d+\/\d+ correct/);
+        // Extract the score to verify it's not 5/5
+        const text = await scoreLabel.textContent();
+        expect(text).not.toContain('5/5');
+      }
+    } finally {
+      await Promise.all(contexts.map(c => c.close()));
+    }
+  });
 });

@@ -1,6 +1,7 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { CardList } from '../components/CardList';
 import { updateGuess, lockInGuess } from '../api';
+import { shuffleWithSeed } from '../utils/shuffle';
 import type { GameState } from '../types';
 
 interface Props {
@@ -14,11 +15,26 @@ export function GuessingPhase({ state, playerId }: Props) {
   const isFinalDecider = playerId === final_decider.id;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initRef = useRef(false);
 
-  // Provide the current group_ranking order for the card list.
-  // Fall back to dealt order if group_ranking not yet set.
-  const currentOrder = round.group_ranking ?? round.card_ids;
-  const orderedCards = currentOrder.map(id => round.cards.find(c => c.id === id)!);
+  // Shuffle the card display order uniquely per player using seeded RNG
+  const displayCards = useMemo(() => {
+    const seed = round.id + playerId;
+    const cards = isTarget ? round.cards : round.cards;
+    return shuffleWithSeed([...cards], seed);
+  }, [round.id, round.cards, isTarget, playerId]);
+
+  // Initialize group_ranking with the shuffled order this player sees (if not already set and it's a non-target player)
+  useEffect(() => {
+    if (initRef.current || isTarget || round.group_ranking !== null) {
+      return; // Already initialized or target player
+    }
+    initRef.current = true;
+    
+    // Submit the initial shuffled display order as the default group guess
+    const initialOrder = displayCards.map(c => c.id);
+    updateGuess(initialOrder).catch(() => {/* ignore errors on initial setup */});
+  }, [isTarget, round.group_ranking, displayCards]);
 
   const handleReorder = useCallback((orderedIds: number[]) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -44,7 +60,7 @@ export function GuessingPhase({ state, playerId }: Props) {
       </p>
 
       <CardList
-        cards={orderedCards}
+        cards={displayCards}
         draggable={!isTarget}
         onReorder={!isTarget ? handleReorder : undefined}
       />

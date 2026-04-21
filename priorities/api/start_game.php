@@ -41,6 +41,7 @@ shuffle($card_ids);
 
 // Deal first 5 cards.
 [$dealt, $remaining] = deal_cards($card_ids);
+shuffle($dealt);
 
 $empty = empty_letters();
 

@@ -218,6 +218,7 @@ function create_next_round(PDO $db, Game $game): bool
     );
 
     [$dealt, $remaining] = deal_cards($game->deckOrder);
+    shuffle($dealt);
 
     $target_player = $active_players[$new_target_index];
     $fd_player     = $active_players[$new_fd_index];

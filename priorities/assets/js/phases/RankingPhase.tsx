@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { CardList } from '../components/CardList';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { submitRanking } from '../api';
+import { shuffleWithSeed } from '../utils/shuffle';
 import type { GameState } from '../types';
 
 interface Props {
@@ -13,7 +14,20 @@ export function RankingPhase({ state, playerId }: Props) {
   const { round, target_player } = state;
   const isTarget = playerId === target_player.id;
 
-  const [orderedIds, setOrderedIds] = useState<number[]>(round.card_ids);
+  // Shuffle the card display order uniquely per player using seeded RNG
+  // This ensures each player sees cards in a different visual order,
+  // even if they all start with the same card_ids.
+  const shuffledCards = useMemo(() => {
+    const seed = round.id + playerId;
+    return shuffleWithSeed([...round.cards], seed);
+  }, [round.id, round.cards, playerId]);
+
+  // Initialize with the shuffled order so initial submission matches the visual order
+  const initialIds = useMemo(() => {
+    return shuffledCards.map(c => c.id);
+  }, [shuffledCards]);
+
+  const [orderedIds, setOrderedIds] = useState<number[]>(initialIds);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
 
@@ -45,7 +59,7 @@ export function RankingPhase({ state, playerId }: Props) {
       <CountdownTimer deadline={round.ranking_deadline} />
 
       <CardList
-        cards={round.cards}
+        cards={shuffledCards}
         draggable
         onReorder={setOrderedIds}
       />
