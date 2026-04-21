@@ -15,6 +15,10 @@ export function GameOverScreen({ state }: Props) {
     active:      '',
   }[game_status] ?? '';
 
+  function handleReturn() {
+    window.location.href = '/priorities/index.php';
+  }
+
   return (
     <div className="phase game-over-screen">
       <h2 className="game-over-title">{message}</h2>
@@ -23,6 +27,10 @@ export function GameOverScreen({ state }: Props) {
         <LetterTiles label="Players" letters={player_letters} />
         <LetterTiles label="Game"    letters={game_letters} />
       </div>
+
+      <button className="action-btn" onClick={handleReturn}>
+        Return to Home
+      </button>
     </div>
   );
 }
