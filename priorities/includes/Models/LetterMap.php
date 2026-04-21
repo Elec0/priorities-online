@@ -3,16 +3,16 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-class LetterMap
+readonly class LetterMap
 {
     public function __construct(
-        public readonly int $P,
-        public readonly int $R,
-        public readonly int $I,
-        public readonly int $O,
-        public readonly int $T,
-        public readonly int $E,
-        public readonly int $S,
+        public int $P,
+        public int $R,
+        public int $I,
+        public int $O,
+        public int $T,
+        public int $E,
+        public int $S,
     ) {}
 
     /** Win condition: P≥1, R≥2, I≥3, O≥1, T≥1, E≥1, S≥1 */

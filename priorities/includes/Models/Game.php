@@ -3,19 +3,19 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-class Game
+readonly class Game
 {
     public function __construct(
-        public readonly int       $id,
-        public readonly int       $lobbyId,
-        public readonly int       $currentRound,
-        public readonly int       $targetPlayerIndex,
-        public readonly int       $finalDeciderIndex,
-        public readonly string    $status,
-        public readonly LetterMap $playerLetters,
-        public readonly LetterMap $gameLetters,
-        public readonly array     $deckOrder,
-        public readonly int       $stateVersion,
-        public readonly string    $createdAt,
+        public int       $id,
+        public int       $lobbyId,
+        public int       $currentRound,
+        public int       $targetPlayerIndex,
+        public int       $finalDeciderIndex,
+        public string    $status,
+        public LetterMap $playerLetters,
+        public LetterMap $gameLetters,
+        public array     $deckOrder,
+        public int       $stateVersion,
+        public string    $createdAt,
     ) {}
 }

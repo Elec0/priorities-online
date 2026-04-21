@@ -3,16 +3,16 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-class Player
+readonly class Player
 {
     public function __construct(
-        public readonly int    $id,
-        public readonly int    $lobbyId,
-        public readonly string $name,
-        public readonly string $sessionToken,
-        public readonly bool   $isHost,
-        public readonly int    $turnOrder,
-        public readonly string $status,
-        public readonly string $joinedAt,
+        public int    $id,
+        public int    $lobbyId,
+        public string $name,
+        public string $sessionToken,
+        public bool   $isHost,
+        public int    $turnOrder,
+        public string $status,
+        public string $joinedAt,
     ) {}
 }

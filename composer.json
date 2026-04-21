@@ -2,6 +2,9 @@
   "name": "priorities-online/app",
   "description": "Priorities Online backend",
   "type": "project",
+  "require": {
+    "php": "^8.4"
+  },
   "require-dev": {
     "phpunit/phpunit": "^11"
   },

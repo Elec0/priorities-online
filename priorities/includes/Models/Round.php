@@ -3,19 +3,19 @@ declare(strict_types=1);
 
 namespace Priorities\Models;
 
-class Round
+readonly class Round
 {
     public function __construct(
-        public readonly int     $id,
-        public readonly int     $gameId,
-        public readonly int     $roundNumber,
-        public readonly int     $targetPlayerId,
-        public readonly int     $finalDeciderId,
-        public readonly array   $cardIds,
-        public readonly ?array  $targetRanking,
-        public readonly ?array  $groupRanking,
-        public readonly ?array  $result,
-        public readonly string  $status,
-        public readonly ?string $rankingDeadline,
+        public int     $id,
+        public int     $gameId,
+        public int     $roundNumber,
+        public int     $targetPlayerId,
+        public int     $finalDeciderId,
+        public array   $cardIds,
+        public ?array  $targetRanking,
+        public ?array  $groupRanking,
+        public ?array  $result,
+        public string  $status,
+        public ?string $rankingDeadline,
     ) {}
 }
