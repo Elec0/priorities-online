@@ -72,10 +72,16 @@ export function CardList({ cards, draggable = false, results, onReorder }: Props
   const [items, setItems] = useState<CardState[]>(cards);
 
   // Keep in sync when parent updates (e.g. SSE push).
-  // Only re-sync if the *set* of IDs changed (new round) to avoid clobbering in-progress drags.
+  // Re-sync if either:
+  // 1. The *set* of IDs changed (new round)
+  // 2. The *order* of IDs changed (collaborative reorder)
+  // But avoid re-syncing on every keystroke during local drags.
   const itemIdsSorted = [...items.map(c => c.id)].sort().join(',');
   const cardIdsSorted = [...cards.map(c => c.id)].sort().join(',');
-  if (itemIdsSorted !== cardIdsSorted) {
+  const itemIdsUnsorted = items.map(c => c.id).join(',');
+  const cardIdsUnsorted = cards.map(c => c.id).join(',');
+  
+  if (itemIdsSorted !== cardIdsSorted || itemIdsUnsorted !== cardIdsUnsorted) {
     setItems(cards);
   }
 

@@ -17,13 +17,29 @@ export function GuessingPhase({ state, playerId }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initRef = useRef(false);
 
-  // Shuffle the card display order:
+  // Default shuffled order for initial display
   // - Target player: unique shuffle (seed = round.id + playerId)
   // - All guessers: same shuffle (seed = round.id only) so they can discuss
-  const displayCards = useMemo(() => {
+  const defaultShuffledCards = useMemo(() => {
     const seed = isTarget ? (round.id + playerId) : round.id;
     return shuffleWithSeed([...round.cards], seed);
   }, [round.id, round.cards, isTarget, playerId]);
+
+  // Display cards: use group_ranking if set (collaborative order), otherwise use default shuffle
+  const displayCards = useMemo(() => {
+    if (isTarget) {
+      // Target player just waits, no dragging
+      return defaultShuffledCards;
+    }
+    
+    // For guessers: show the collaboratively agreed order if it exists
+    if (round.group_ranking) {
+      return round.group_ranking.map(id => round.cards.find(c => c.id === id)!);
+    }
+    
+    // Otherwise show the default shuffled order
+    return defaultShuffledCards;
+  }, [isTarget, round.group_ranking, round.cards, defaultShuffledCards]);
 
   // Initialize group_ranking with the shuffled order this player sees (if not already set and it's a non-target player)
   useEffect(() => {
@@ -33,9 +49,9 @@ export function GuessingPhase({ state, playerId }: Props) {
     initRef.current = true;
     
     // Submit the initial shuffled display order as the default group guess
-    const initialOrder = displayCards.map(c => c.id);
+    const initialOrder = defaultShuffledCards.map(c => c.id);
     updateGuess(initialOrder).catch(() => {/* ignore errors on initial setup */});
-  }, [isTarget, round.group_ranking, displayCards]);
+  }, [isTarget, round.group_ranking, defaultShuffledCards]);
 
   const handleReorder = useCallback((orderedIds: number[]) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
