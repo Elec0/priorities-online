@@ -4,6 +4,18 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./tests/ui/setup.ts'],
+    include: ['tests/ui/**/*.{test,spec}.{ts,tsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'html'],
+      include: ['priorities/assets/js/**/*.{ts,tsx}'],
+      exclude: ['priorities/assets/js/dist/**'],
+    },
+  },
   build: {
     rollupOptions: {
       input: {
