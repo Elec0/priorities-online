@@ -2,8 +2,17 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
+const appUrlPlugin = {
+  name: 'app-url',
+  configureServer(server: { httpServer: { once: (event: string, cb: () => void) => void } }) {
+    server.httpServer?.once('listening', () => {
+      console.log('\n  \x1b[1m\x1b[36mApp running at:\x1b[0m \x1b[4mhttp://localhost:8000/priorities/\x1b[0m\n');
+    });
+  },
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), appUrlPlugin],
   test: {
     environment: 'jsdom',
     globals: true,
