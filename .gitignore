@@ -15,6 +15,7 @@ Thumbs.db
 *.log
 /vendor/
 composer.lock
+coverage/
 
 # Node (if ever added)
 node_modules/

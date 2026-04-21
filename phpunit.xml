@@ -8,4 +8,15 @@
       <directory>tests</directory>
     </testsuite>
   </testsuites>
+  <source>
+    <include>
+      <directory suffix=".php">priorities/includes</directory>
+    </include>
+  </source>
+  <coverage>
+    <report>
+      <html outputDirectory="coverage"/>
+      <text outputFile="coverage/coverage.txt" showUncoveredFiles="true"/>
+    </report>
+  </coverage>
 </phpunit>
