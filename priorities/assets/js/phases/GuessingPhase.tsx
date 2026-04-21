@@ -17,11 +17,12 @@ export function GuessingPhase({ state, playerId }: Props) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initRef = useRef(false);
 
-  // Shuffle the card display order uniquely per player using seeded RNG
+  // Shuffle the card display order:
+  // - Target player: unique shuffle (seed = round.id + playerId)
+  // - All guessers: same shuffle (seed = round.id only) so they can discuss
   const displayCards = useMemo(() => {
-    const seed = round.id + playerId;
-    const cards = isTarget ? round.cards : round.cards;
-    return shuffleWithSeed([...cards], seed);
+    const seed = isTarget ? (round.id + playerId) : round.id;
+    return shuffleWithSeed([...round.cards], seed);
   }, [round.id, round.cards, isTarget, playerId]);
 
   // Initialize group_ranking with the shuffled order this player sees (if not already set and it's a non-target player)
