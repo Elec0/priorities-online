@@ -27,7 +27,7 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: priorities
       MYSQL_USER: priorities-game
-      MYSQL_PASSWORD: PrioritiesIsAMidGame
+      MYSQL_PASSWORD: TestingDBPassword
     ports:
       - "3306:3306"
     volumes:

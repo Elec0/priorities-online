@@ -1,5 +1,5 @@
 # Database credentials
-config.php
+/config.php
 
 # OS
 .DS_Store
