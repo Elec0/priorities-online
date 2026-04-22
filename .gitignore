@@ -14,7 +14,6 @@ Thumbs.db
 # PHP
 *.log
 /vendor/
-composer.lock
 coverage/
 
 # Node (if ever added)

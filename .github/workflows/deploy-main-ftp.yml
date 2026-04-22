@@ -13,6 +13,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6.0.2
 
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+
       - name: Setup Node
         uses: actions/setup-node@v6.4.0
         with:
@@ -21,6 +27,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Install PHP dependencies
+        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
 
       - name: Build assets
         run: npm run build
@@ -31,7 +40,8 @@ jobs:
           server: ftp.elec0.com
           username: github-action@priorities.elec0.com
           password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./
+          server-dir: /
+          local-dir: ./priorities/
           exclude: |
             **/.git*
             **/.git*/**
@@ -50,3 +60,12 @@ jobs:
             tsconfig.json
             vite.config.ts
             config.php
+
+      - name: Deploy vendor to FTP root
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.6
+        with:
+          server: ftp.elec0.com
+          username: github-action@priorities.elec0.com
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /vendor/
+          local-dir: ./vendor/
