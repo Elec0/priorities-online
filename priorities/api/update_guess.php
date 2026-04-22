@@ -18,7 +18,7 @@ $db     = get_db();
 $player = require_player($db);
 
 // APCu rate limit: 10 requests per token per 10 seconds.
-if (function_exists('apcu_fetch')) {
+if (function_exists('apcu_fetch') && function_exists('apcu_store')) {
     $rate_key = 'rate:update_guess:' . $player->sessionToken;
     $count    = (int) apcu_fetch($rate_key);
     if ($count >= 10) {
