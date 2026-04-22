@@ -1,0 +1,52 @@
+name: Build and Deploy (FTP)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build
+
+      - name: Deploy to FTP server
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ftp.elec0.com
+          username: github-action@priorities.elec0.com
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
+            **/node_modules/**
+            **/coverage/**
+            **/test-results/**
+            **/tests/**
+            **/.vscode/**
+            **/docker/**
+            docker-compose.yml
+            notes.md
+            README.md
+            architecture.md
+            playwright.config.ts
+            tsconfig.json
+            vite.config.ts
+            config.php

@@ -1,6 +1,6 @@
 # Priorities Online
 
-A real-time, web-based multiplayer adaptation of the cooperative party game *Priorities*.
+A real-time, vibe-coded, web-based multiplayer adaptation of the cooperative party game *Priorities*.
 
 ## Overview
 
