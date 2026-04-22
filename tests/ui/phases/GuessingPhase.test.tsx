@@ -23,7 +23,10 @@ describe('GuessingPhase', () => {
     final_decider: playerBob,
   });
 
-  beforeEach(() => mockLockInGuess.mockReset());
+  beforeEach(() => {
+    mockLockInGuess.mockReset();
+    window.sessionStorage.clear();
+  });
 
   it('shows waiting message to the target player', () => {
     render(<GuessingPhase state={guessingState} playerId={playerAlice.id} />);
@@ -79,5 +82,14 @@ describe('GuessingPhase', () => {
     expect(screen.getByText('Pizza')).toBeInTheDocument();
     expect(screen.getByText('Rain')).toBeInTheDocument();
     expect(screen.getByText('Ice cream')).toBeInTheDocument();
+  });
+
+  it('keeps showing the target submitted order after transitioning to guessing', () => {
+    window.sessionStorage.setItem('targetSubmittedOrder:1', JSON.stringify([3, 1, 2]));
+
+    render(<GuessingPhase state={guessingState} playerId={playerAlice.id} />);
+
+    const contents = Array.from(document.querySelectorAll('.card-content')).map(el => el.textContent?.trim());
+    expect(contents).toEqual(['Ice cream', 'Pizza', 'Rain']);
   });
 });

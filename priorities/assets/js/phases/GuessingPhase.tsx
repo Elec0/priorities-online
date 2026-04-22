@@ -9,6 +9,30 @@ interface Props {
   playerId: number;
 }
 
+function readSubmittedTargetOrder(roundId: number, dealtIds: number[]): number[] | null {
+  const raw = window.sessionStorage.getItem(`targetSubmittedOrder:${roundId}`);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length !== dealtIds.length) {
+      return null;
+    }
+
+    const submitted = parsed.map(n => Number(n));
+    if (submitted.some(n => !Number.isInteger(n))) {
+      return null;
+    }
+
+    const submittedSorted = [...submitted].sort((a, b) => a - b);
+    const dealtSorted = [...dealtIds].sort((a, b) => a - b);
+    const isSameSet = submittedSorted.every((id, idx) => id === dealtSorted[idx]);
+    return isSameSet ? submitted : null;
+  } catch {
+    return null;
+  }
+}
+
 export function GuessingPhase({ state, playerId }: Props) {
   const { round, target_player, final_decider } = state;
   const isTarget     = playerId === target_player.id;
@@ -30,6 +54,16 @@ export function GuessingPhase({ state, playerId }: Props) {
     () => defaultShuffledCards.map(c => c.id),
     [defaultShuffledCards],
   );
+
+  const cardsById = useMemo(
+    () => new Map(round.cards.map(card => [card.id, card] as const)),
+    [round.cards],
+  );
+
+  const targetSubmittedOrder = useMemo(() => {
+    if (!isTarget) return null;
+    return readSubmittedTargetOrder(round.id, round.card_ids);
+  }, [isTarget, round.id, round.card_ids]);
 
   const serverOrder = round.group_ranking ?? defaultOrder;
   const [localOrder, setLocalOrder] = useState<number[]>(serverOrder);
@@ -73,13 +107,18 @@ export function GuessingPhase({ state, playerId }: Props) {
   // Display cards: use group_ranking if set (collaborative order), otherwise use default shuffle
   const displayCards = useMemo(() => {
     if (isTarget) {
-      // Target player just waits, no dragging
-      return defaultShuffledCards;
+      // Keep showing the exact order the target submitted when available.
+      const submittedOrder = targetSubmittedOrder ?? defaultOrder;
+      return submittedOrder
+        .map(id => cardsById.get(id))
+        .filter((c): c is NonNullable<typeof c> => c !== undefined);
     }
 
     // Guessers render from local optimistic order so drops do not snap back.
-    return localOrder.map(id => round.cards.find(c => c.id === id)!);
-  }, [isTarget, round.cards, defaultShuffledCards, localOrder]);
+    return localOrder
+      .map(id => cardsById.get(id))
+      .filter((c): c is NonNullable<typeof c> => c !== undefined);
+  }, [isTarget, targetSubmittedOrder, defaultOrder, cardsById, localOrder]);
 
   // Initialize group_ranking with the shuffled order this player sees (if not already set and it's a non-target player)
   useEffect(() => {
