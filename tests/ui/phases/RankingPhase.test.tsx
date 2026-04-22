@@ -57,7 +57,8 @@ describe('RankingPhase', () => {
       const user = userEvent.setup();
       render(<RankingPhase state={rankingState} playerId={playerAlice.id} />);
       await user.click(screen.getByRole('button', { name: 'Submit My Ranking' }));
-      await waitFor(() => expect(mockSubmitRanking).toHaveBeenCalledWith([1, 2, 3]));
+      // seed = round.id(1) + playerId(alice=10) = 11 → shuffleWithSeed gives [2, 3, 1]
+      await waitFor(() => expect(mockSubmitRanking).toHaveBeenCalledWith([2, 3, 1]));
     });
 
     it.skip('disables Submit button while submitting', async () => {

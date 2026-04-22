@@ -4,7 +4,7 @@ import { GuessingPhase } from '../../../priorities/assets/js/phases/GuessingPhas
 import { makeGameState, playerAlice, playerBob, playerCarol, cards } from '../fixtures';
 
 vi.mock('../../../priorities/assets/js/api', () => ({
-  updateGuess:  vi.fn(),
+  updateGuess:  vi.fn().mockResolvedValue({ success: true }),
   lockInGuess:  vi.fn(),
 }));
 
