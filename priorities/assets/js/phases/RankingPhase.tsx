@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { CardList } from '../components/CardList';
 import { CountdownTimer } from '../components/CountdownTimer';
 import { submitRanking } from '../api';
@@ -22,14 +22,31 @@ export function RankingPhase({ state, playerId }: Props) {
     return shuffleWithSeed([...round.cards], seed);
   }, [round.id, round.cards, playerId]);
 
-  // Initialize with the shuffled order so initial submission matches the visual order
-  const initialIds = useMemo(() => {
-    return shuffledCards.map(c => c.id);
-  }, [shuffledCards]);
+  // Initialize with the shuffled order so initial submission matches the visual order.
+  const initialIds = useMemo(() => shuffledCards.map(c => c.id), [shuffledCards]);
 
   const [orderedIds, setOrderedIds] = useState<number[]>(initialIds);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
+
+  // Reset order each round so submit payload always reflects current round cards.
+  useEffect(() => {
+    setOrderedIds(initialIds);
+    setSubmitting(false);
+    setError('');
+  }, [round.id, initialIds]);
+
+  // Render in the current local order so what the target sees is what gets submitted.
+  const displayCards = useMemo(() => {
+    if (orderedIds.length !== shuffledCards.length) {
+      return shuffledCards;
+    }
+
+    const byId = new Map(shuffledCards.map(c => [c.id, c] as const));
+    return orderedIds
+      .map(id => byId.get(id))
+      .filter((c): c is NonNullable<typeof c> => c !== undefined);
+  }, [orderedIds, shuffledCards]);
 
   async function handleSubmit() {
     setError('');
@@ -59,7 +76,7 @@ export function RankingPhase({ state, playerId }: Props) {
       <CountdownTimer deadline={round.ranking_deadline} />
 
       <CardList
-        cards={shuffledCards}
+        cards={displayCards}
         draggable
         onReorder={setOrderedIds}
       />
