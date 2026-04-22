@@ -108,17 +108,6 @@ export function IndexPage() {
       {tab === 'join' && (
         <form onSubmit={handleJoin} className="lobby-form">
           <label>
-            Your name
-            <input
-              type="text"
-              value={name}
-              maxLength={50}
-              required
-              autoFocus
-              onChange={e => setName(e.target.value)}
-            />
-          </label>
-          <label>
             Lobby code
             <input
               type="text"
@@ -127,6 +116,17 @@ export function IndexPage() {
               required
               placeholder="ABCDEF"
               onChange={e => setCode(e.target.value.toUpperCase())}
+            />
+          </label>
+          <label>
+            Your name
+            <input
+              type="text"
+              value={name}
+              maxLength={50}
+              required
+              autoFocus
+              onChange={e => setName(e.target.value)}
             />
           </label>
           <button type="submit" disabled={loading}>
