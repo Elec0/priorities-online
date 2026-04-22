@@ -22,7 +22,7 @@ export function LobbyPage() {
   useEffect(() => {
     if (state && state.lobby_status === 'playing') {
       const query = devProfile ? `?lobby_id=${lobbyId}&dev_profile=${devProfile}` : `?lobby_id=${lobbyId}`;
-      window.location.href = `/priorities/game.php${query}`;
+      window.location.href = `game.php${query}`;
     }
   }, [state, lobbyId, devProfile]);
 

@@ -16,7 +16,7 @@ export function GameOverScreen({ state }: Props) {
   }[game_status] ?? '';
 
   function handleReturn() {
-    window.location.href = '/priorities/index.php';
+    window.location.href = 'index.php';
   }
 
   return (

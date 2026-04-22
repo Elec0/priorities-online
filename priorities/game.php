@@ -6,7 +6,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 $player = validate_token(get_db());
 if ($player === null) {
-    header('Location: /priorities/');
+    header('Location: ./');
     exit;
 }
 
@@ -19,7 +19,7 @@ $dev_profile = get_dev_profile();
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Priorities — Game</title>
-  <link rel="stylesheet" href="/priorities/assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
   <div
@@ -28,6 +28,6 @@ $dev_profile = get_dev_profile();
     data-player-id="<?= htmlspecialchars((string) $player->id) ?>"
     data-dev-profile="<?= htmlspecialchars($dev_profile) ?>"
   ></div>
-  <script type="module" src="/priorities/assets/js/dist/game.js"></script>
+  <script type="module" src="assets/js/dist/game.js"></script>
 </body>
 </html>

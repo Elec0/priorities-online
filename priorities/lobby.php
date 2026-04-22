@@ -6,7 +6,7 @@ require_once __DIR__ . '/includes/auth.php';
 
 $player = validate_token(get_db());
 if ($player === null) {
-    header('Location: /priorities/');
+    header('Location: ./');
     exit;
 }
 
@@ -20,7 +20,7 @@ $is_host    = $player->isHost ? '1' : '0';
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Priorities — Lobby</title>
-  <link rel="stylesheet" href="/priorities/assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
   <div
@@ -30,6 +30,6 @@ $is_host    = $player->isHost ? '1' : '0';
     data-is-host="<?= htmlspecialchars($is_host) ?>"
     data-dev-profile="<?= htmlspecialchars($dev_profile) ?>"
   ></div>
-  <script type="module" src="/priorities/assets/js/dist/lobby.js"></script>
+  <script type="module" src="assets/js/dist/lobby.js"></script>
 </body>
 </html>

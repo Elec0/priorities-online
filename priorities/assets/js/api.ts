@@ -1,4 +1,4 @@
-const BASE = '/priorities/api';
+const BASE = 'api';
 
 function devProfileParam(): string {
   const p = new URLSearchParams(window.location.search).get('dev_profile');

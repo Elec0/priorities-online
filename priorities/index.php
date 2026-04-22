@@ -4,10 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Priorities</title>
-  <link rel="stylesheet" href="/priorities/assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="/priorities/assets/js/dist/index.js"></script>
+  <script type="module" src="assets/js/dist/index.js"></script>
 </body>
 </html>

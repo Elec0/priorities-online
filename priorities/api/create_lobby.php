@@ -71,5 +71,5 @@ echo json_encode([
     'code'         => $code,
     'lobby_id'     => $lobby_id,
     'player_id'    => $player_id,
-    'redirect_url' => "/priorities/lobby.php{$query}",
+    'redirect_url' => "lobby.php{$query}",
 ]);

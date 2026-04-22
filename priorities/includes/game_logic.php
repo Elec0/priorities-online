@@ -1,7 +1,16 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../../vendor/autoload.php';
+$autoload_paths = [
+    __DIR__ . '/../../vendor/autoload.php',
+    __DIR__ . '/../vendor/autoload.php',
+];
+foreach ($autoload_paths as $autoload_path) {
+    if (is_file($autoload_path)) {
+        require_once $autoload_path;
+        break;
+    }
+}
 
 use Priorities\Models\Card;
 use Priorities\Models\Game;

@@ -11,7 +11,7 @@ export function useSSE(lobbyId: number, initialVersion: number) {
 
     function connect() {
       if (cancelled) return;
-      const url = `/priorities/api/stream.php?lobby_id=${lobbyId}&state_version=${versionRef.current}`;
+      const url = `api/stream.php?lobby_id=${lobbyId}&state_version=${versionRef.current}`;
       es = new EventSource(url);
 
       es.onmessage = (event: MessageEvent) => {
