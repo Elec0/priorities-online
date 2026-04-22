@@ -29,12 +29,14 @@ export function RankingPhase({ state, playerId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
 
-  // Reset order each round so submit payload always reflects current round cards.
+  // Reset order only when the round changes.
+  // Same-round SSE refreshes can send equivalent card arrays with new references;
+  // do not clobber in-progress drag order on those updates.
   useEffect(() => {
     setOrderedIds(initialIds);
     setSubmitting(false);
     setError('');
-  }, [round.id, initialIds]);
+  }, [round.id]);
 
   // Render in the current local order so what the target sees is what gets submitted.
   const displayCards = useMemo(() => {
