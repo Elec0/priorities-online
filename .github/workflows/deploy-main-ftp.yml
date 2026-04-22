@@ -40,7 +40,7 @@ jobs:
           server: ftp.elec0.com
           username: github-action@priorities.elec0.com
           password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: /
+          server-dir: /priorities/
           local-dir: ./priorities/
           exclude: |
             **/.git*
