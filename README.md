@@ -144,6 +144,24 @@ All endpoints live at `/priorities/api/` and return JSON. Authentication uses a 
 
 This project is designed to run on Apache shared hosting (e.g., GoDaddy) with no Node.js runtime required.
 
+### Required PHP Extensions
+
+Enable these PHP extensions in production:
+
+- `PDO` (database access)
+- `pdo_mysql` (MySQL driver for PDO)
+- `mbstring` (multibyte-safe input validation for names/chat)
+
+### Optional but Recommended PHP Extensions
+
+- `APCu` for in-process caching and lightweight rate limiting. The app works without it, but SSE state caching and rate-limit efficiency are reduced.
+
+You can verify loaded extensions with:
+
+```bash
+php -m
+```
+
 1. Upload the `priorities/` folder to your web root
 2. Place `config.php` **one level above** the web root
 3. Import `priorities/db/schema.sql` into your MySQL database

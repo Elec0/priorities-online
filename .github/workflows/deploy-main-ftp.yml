@@ -28,8 +28,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare Composer autoload paths
+        run: |
+          if [ ! -e includes ]; then
+            ln -s priorities/includes includes
+          fi
+
       - name: Install PHP dependencies
-        run: composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction
+        run: composer install --no-dev --prefer-dist --no-interaction
 
       - name: Build assets
         run: npm run build

@@ -10,7 +10,10 @@
   },
   "autoload": {
     "psr-4": {
-      "Priorities\\": "priorities/includes/"
+      "Priorities\\": [
+        "priorities/includes/",
+        "includes/"
+      ]
     }
   },
   "autoload-dev": {
