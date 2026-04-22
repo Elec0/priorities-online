@@ -81,11 +81,7 @@ $stmt3 = $db->prepare(
 );
 $stmt3->execute([':gr' => json_encode($round->cardIds), ':id' => $round->id]);
 
-$game_stmt = $db->prepare('SELECT id, lobby_id FROM games WHERE id = :id LIMIT 1');
-$game_stmt->execute([':id' => $round->gameId]);
-$game_row = $game_stmt->fetch();
-
-insert_system_chat($db, $game_row['lobby_id'], "{$player->name} has submitted their ranking! Time to guess!");
+insert_system_chat($db, $player->lobbyId, "{$player->name} has submitted their ranking! Time to guess!");
 bump_version($db, $round->gameId);
 
 echo json_encode(['success' => true]);
