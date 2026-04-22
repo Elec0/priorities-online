@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
@@ -26,14 +27,7 @@ if (!is_array($body) || !isset($body['ranking']) || !is_array($body['ranking']))
 $ranking = array_map('intval', $body['ranking']);
 
 // Load current round.
-$stmt = $db->prepare(
-    "SELECT r.* FROM rounds r
-     JOIN games g ON g.id = r.game_id
-     WHERE g.lobby_id = :lobby_id AND r.status = 'ranking'
-    ORDER BY g.id DESC, r.round_number DESC LIMIT 1"
-);
-$stmt->execute([':lobby_id' => $player->lobbyId]);
-$row = $stmt->fetch();
+$row = dbx_fetch_round_by_status_for_lobby($db, $player->lobbyId, 'ranking');
 
 if ($row === false) {
     http_response_code(400);
@@ -69,17 +63,10 @@ if ($submitted_sorted !== $dealt_sorted) {
     exit;
 }
 
-$stmt2 = $db->prepare(
-    "UPDATE rounds SET target_ranking = :ranking, status = 'guessing', ranking_deadline = NULL
-     WHERE id = :id"
-);
-$stmt2->execute([':ranking' => json_encode($ranking), ':id' => $round->id]);
+dbx_update_round_target_ranking_to_guessing($db, $round->id, json_encode($ranking));
 
 // Default group_ranking to dealt order if not yet set.
-$stmt3 = $db->prepare(
-    'UPDATE rounds SET group_ranking = :gr WHERE id = :id AND group_ranking IS NULL'
-);
-$stmt3->execute([':gr' => json_encode($round->cardIds), ':id' => $round->id]);
+dbx_set_round_group_ranking_if_null($db, $round->id, json_encode($round->cardIds));
 
 insert_system_chat($db, $player->lobbyId, "{$player->name} has submitted their ranking! Time to guess!");
 bump_version($db, $round->gameId);

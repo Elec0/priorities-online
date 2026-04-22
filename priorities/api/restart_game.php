@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -16,19 +17,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $db     = get_db();
 $player = require_host($db);
 
-$active_players = $db->prepare(
-    "SELECT COUNT(*) FROM players WHERE lobby_id = :lobby_id AND status = 'active'"
-);
-$active_players->execute([':lobby_id' => $player->lobbyId]);
-if ((int) $active_players->fetchColumn() < 3) {
+if (dbx_count_active_players($db, $player->lobbyId) < 3) {
     http_response_code(400);
     echo json_encode(['error' => 'Need at least 3 active players to restart']);
     exit;
 }
 
-$game_stmt = $db->prepare('SELECT id, status FROM games WHERE lobby_id = :lobby_id LIMIT 1');
-$game_stmt->execute([':lobby_id' => $player->lobbyId]);
-$game_row = $game_stmt->fetch();
+$game_row = dbx_fetch_game_id_and_status_by_lobby($db, $player->lobbyId);
 
 if ($game_row === false) {
     http_response_code(400);
@@ -48,11 +43,8 @@ if (!in_array($game_status, $can_restart_statuses, true)) {
 
 $db->beginTransaction();
 try {
-    $db->prepare('DELETE FROM games WHERE id = :id')
-       ->execute([':id' => $game_id]);
-
-    $db->prepare("UPDATE lobbies SET status = 'waiting' WHERE id = :id")
-       ->execute([':id' => $player->lobbyId]);
+    dbx_delete_game_by_id($db, $game_id);
+    dbx_set_lobby_status($db, $player->lobbyId, 'waiting');
 
     $db->commit();
 } catch (Throwable $e) {

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 
 header('Content-Type: application/json');
@@ -28,11 +29,7 @@ if (strlen($code) !== 6) {
 
 $db = get_db();
 
-$stmt = $db->prepare(
-    "SELECT id FROM lobbies WHERE code = :code AND status = 'waiting' LIMIT 1"
-);
-$stmt->execute([':code' => $code]);
-$lobby = $stmt->fetch();
+$lobby = dbx_find_waiting_lobby_by_code($db, $code);
 
 if ($lobby === false) {
     http_response_code(404);
@@ -42,36 +39,18 @@ if ($lobby === false) {
 $lobby_id = (int) $lobby['id'];
 
 // Check name uniqueness in lobby.
-$stmt2 = $db->prepare(
-    "SELECT COUNT(*) FROM players WHERE lobby_id = :lobby_id AND name = :name AND status = 'active'"
-);
-$stmt2->execute([':lobby_id' => $lobby_id, ':name' => $name]);
-if ((int) $stmt2->fetchColumn() > 0) {
+if (dbx_count_active_players_with_name($db, $lobby_id, $name) > 0) {
     http_response_code(409);
     echo json_encode(['error' => 'Name already taken in this lobby']);
     exit;
 }
 
 // Determine next turn_order.
-$stmt3 = $db->prepare(
-    'SELECT COALESCE(MAX(turn_order), -1) + 1 AS next_order FROM players WHERE lobby_id = :lobby_id'
-);
-$stmt3->execute([':lobby_id' => $lobby_id]);
-$turn_order = (int) $stmt3->fetchColumn();
+$turn_order = dbx_next_turn_order($db, $lobby_id);
 
 $token = bin2hex(random_bytes(32));
 
-$stmt4 = $db->prepare(
-    'INSERT INTO players (lobby_id, name, session_token, is_host, turn_order)
-     VALUES (:lobby_id, :name, :token, 0, :turn_order)'
-);
-$stmt4->execute([
-    ':lobby_id'   => $lobby_id,
-    ':name'       => $name,
-    ':token'      => $token,
-    ':turn_order' => $turn_order,
-]);
-$player_id = (int) $db->lastInsertId();
+$player_id = dbx_insert_player($db, $lobby_id, $name, $token, false, $turn_order);
 
 set_token_cookie($token);
 

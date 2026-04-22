@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
@@ -33,11 +34,7 @@ if ($target_id === $player->id) {
 }
 
 // Verify target is in the same lobby.
-$stmt = $db->prepare(
-    "SELECT id, name FROM players WHERE id = :id AND lobby_id = :lobby_id AND status = 'active' LIMIT 1"
-);
-$stmt->execute([':id' => $target_id, ':lobby_id' => $player->lobbyId]);
-$target = $stmt->fetch();
+$target = dbx_find_active_player_in_lobby($db, $target_id, $player->lobbyId);
 
 if ($target === false) {
     http_response_code(404);
@@ -45,17 +42,14 @@ if ($target === false) {
     exit;
 }
 
-$stmt2 = $db->prepare("UPDATE players SET status = 'kicked' WHERE id = :id");
-$stmt2->execute([':id' => $target_id]);
+dbx_mark_player_kicked($db, $target_id);
 
 insert_system_chat($db, $player->lobbyId, "{$target['name']} was removed from the lobby.");
 
 // Bump version if game exists.
-$game_stmt = $db->prepare('SELECT id FROM games WHERE lobby_id = :id LIMIT 1');
-$game_stmt->execute([':id' => $player->lobbyId]);
-$game_row = $game_stmt->fetch();
-if ($game_row !== false) {
-    bump_version($db, (int) $game_row['id']);
+$game_id = dbx_get_game_id_by_lobby($db, $player->lobbyId);
+if ($game_id !== null) {
+    bump_version($db, $game_id);
 }
 
 echo json_encode(['success' => true]);

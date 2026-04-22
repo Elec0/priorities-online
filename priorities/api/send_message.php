@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 
@@ -42,22 +43,13 @@ if ($message === '' || mb_strlen($message) > 256) {
     exit;
 }
 
-$stmt = $db->prepare(
-    'INSERT INTO chat_messages (lobby_id, player_id, message) VALUES (:lobby_id, :player_id, :message)'
-);
-$stmt->execute([
-    ':lobby_id'  => $player->lobbyId,
-    ':player_id' => $player->id,
-    ':message'   => $message,
-]);
+dbx_insert_chat_message($db, $player->lobbyId, $player->id, $message);
 
 // Bump state version if game is active so chat appears in SSE push.
-$stmt2 = $db->prepare("SELECT id FROM games WHERE lobby_id = :id LIMIT 1");
-$stmt2->execute([':id' => $player->lobbyId]);
-$game_row = $stmt2->fetch();
-if ($game_row !== false) {
+$game_id = dbx_get_game_id_by_lobby($db, $player->lobbyId);
+if ($game_id !== null) {
     require_once __DIR__ . '/../includes/game_logic.php';
-    bump_version($db, (int) $game_row['id']);
+    bump_version($db, $game_id);
 }
 
 echo json_encode(['success' => true]);

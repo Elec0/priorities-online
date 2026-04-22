@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
@@ -20,14 +21,7 @@ $db     = get_db();
 $player = require_player($db);
 
 // Load the current revealed round.
-$stmt = $db->prepare(
-    "SELECT r.* FROM rounds r
-     JOIN games g ON g.id = r.game_id
-     WHERE g.lobby_id = :lobby_id AND r.status = 'revealed'
-     ORDER BY r.round_number DESC LIMIT 1"
-);
-$stmt->execute([':lobby_id' => $player->lobbyId]);
-$row = $stmt->fetch();
+$row = dbx_fetch_round_by_status_for_lobby($db, $player->lobbyId, 'revealed');
 
 if ($row === false) {
     http_response_code(400);
@@ -57,16 +51,13 @@ if ($player->id !== $round->finalDeciderId && !$player->isHost) {
 }
 
 // Load game.
-$game_stmt = $db->prepare('SELECT * FROM games WHERE id = :id LIMIT 1');
-$game_stmt->execute([':id' => $round->gameId]);
-$game_row = $game_stmt->fetch();
+$game_row = dbx_fetch_game_by_id($db, $round->gameId);
 
 $game = hydrate_game($game_row);
 
 // Create the next round.
 if (!create_next_round($db, $game)) {
-    $db->prepare("UPDATE games SET status = 'draw' WHERE id = :id")
-       ->execute([':id' => $game->id]);
+    dbx_set_game_draw($db, $game->id);
     insert_system_chat($db, $player->lobbyId, 'The deck ran out! The game is a draw.');
 }
 

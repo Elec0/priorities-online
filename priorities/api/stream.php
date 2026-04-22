@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
@@ -19,9 +20,7 @@ use Priorities\Models\Round;
 function build_state_payload(int $lobby_id, PDO $db): array
 {
     // Lobby
-    $stmt = $db->prepare("SELECT * FROM lobbies WHERE id = :id LIMIT 1");
-    $stmt->execute([':id' => $lobby_id]);
-    $lobby_row = $stmt->fetch();
+    $lobby_row = dbx_fetch_lobby_by_id($db, $lobby_id);
 
     if ($lobby_row === false) {
         return ['error' => 'Lobby not found'];
@@ -30,22 +29,10 @@ function build_state_payload(int $lobby_id, PDO $db): array
     $players = get_active_players($lobby_id, $db);
 
     // Chat (last 50, ascending)
-    $stmt2 = $db->prepare(
-        'SELECT cm.id, cm.player_id, p.name AS player_name, cm.message, cm.created_at
-         FROM chat_messages cm
-         LEFT JOIN players p ON p.id = cm.player_id
-         WHERE cm.lobby_id = :lobby_id
-         ORDER BY cm.created_at DESC
-         LIMIT 50'
-    );
-    $stmt2->execute([':lobby_id' => $lobby_id]);
-    $chat = array_reverse($stmt2->fetchAll());
+    $chat = dbx_fetch_recent_chat($db, $lobby_id);
 
     if ($lobby_row['status'] === 'waiting') {
-        $stmt3 = $db->prepare("SELECT state_version FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1");
-        $stmt3->execute([':id' => $lobby_id]);
-        $ver_row    = $stmt3->fetch();
-        $state_ver  = $ver_row !== false ? (int) $ver_row['state_version'] : 0;
+        $state_ver = dbx_fetch_latest_state_version_by_lobby($db, $lobby_id);
 
         return [
             'state_version' => $state_ver,
@@ -58,31 +45,19 @@ function build_state_payload(int $lobby_id, PDO $db): array
     }
 
     // Playing state
-    $stmt4 = $db->prepare("SELECT * FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1");
-    $stmt4->execute([':id' => $lobby_id]);
-    $game_row = $stmt4->fetch();
+    $game_row = dbx_fetch_latest_game_by_lobby($db, $lobby_id);
 
     $game = hydrate_game($game_row);
 
     // Prioritise active rounds (ranking/guessing) over revealed so the revealed screen
     // stays visible until next_round.php is called, then the new ranking round takes over.
-    $stmt5 = $db->prepare(
-        "SELECT * FROM rounds WHERE game_id = :game_id
-         ORDER BY
-           CASE status WHEN 'ranking' THEN 0 WHEN 'guessing' THEN 1 WHEN 'revealed' THEN 2 ELSE 3 END ASC,
-           round_number DESC
-         LIMIT 1"
-    );
-    $stmt5->execute([':game_id' => $game->id]);
-    $round_row = $stmt5->fetch();
+        $round_row = dbx_fetch_prioritized_round_for_game($db, $game->id);
     $round     = hydrate_round($round_row);
 
     // Cards for this round
-    $placeholders = implode(',', array_fill(0, count($round->cardIds), '?'));
-    $stmt6 = $db->prepare("SELECT * FROM cards WHERE id IN ({$placeholders})");
-    $stmt6->execute($round->cardIds);
+        $card_rows = dbx_fetch_cards_by_ids($db, $round->cardIds);
     $cards_by_id = [];
-    foreach ($stmt6->fetchAll() as $c) {
+        foreach ($card_rows as $c) {
         $cards_by_id[(int) $c['id']] = $c;
     }
     $cards = array_map(fn(int $id) => $cards_by_id[$id], $round->cardIds);
@@ -148,9 +123,7 @@ function player_to_array(Player $p): array
 
 function fetch_player_by_id(int $id, PDO $db): Player
 {
-    $stmt = $db->prepare('SELECT * FROM players WHERE id = :id LIMIT 1');
-    $stmt->execute([':id' => $id]);
-    $row = $stmt->fetch();
+    $row = dbx_fetch_player_by_id($db, $id);
     return new Player(
         id:           (int) $row['id'],
         lobbyId:      (int) $row['lobby_id'],
@@ -172,10 +145,7 @@ $lobby_id     = (int) ($_GET['lobby_id'] ?? 0);
 $client_ver   = (int) ($_GET['state_version'] ?? 0);
 
 // Stale lobby cleanup (piggyback on connection).
-$cleanup = $db->prepare(
-    "DELETE FROM lobbies WHERE updated_at < DATE_SUB(NOW(), INTERVAL 24 HOUR) AND status != 'playing'"
-);
-$cleanup->execute();
+dbx_delete_stale_lobbies($db);
 
 header('Content-Type: text/event-stream');
 header('Cache-Control: no-cache');
@@ -192,32 +162,15 @@ $first_iter    = true;
 
 while ((time() - $start) < $hold_duration) {
     // Check for timed-out ranking rounds.
-    $timeout_stmt = $db->prepare(
-        "SELECT r.*, g.lobby_id
-         FROM rounds r
-         JOIN games g ON g.id = r.game_id
-         WHERE r.status = 'ranking'
-           AND r.ranking_deadline < NOW()
-           AND g.lobby_id = :lobby_id
-         LIMIT 1"
-    );
-    $timeout_stmt->execute([':lobby_id' => $lobby_id]);
-    $timed_out = $timeout_stmt->fetch();
+    $timed_out = dbx_fetch_timed_out_ranking_round_for_lobby($db, $lobby_id);
 
     if ($timed_out !== false) {
-        $game_stmt = $db->prepare('SELECT * FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1');
-        $game_stmt->execute([':id' => $lobby_id]);
-        $game_row = $game_stmt->fetch();
+        $game_row = dbx_fetch_latest_game_by_lobby($db, $lobby_id);
 
         if ($game_row !== false) {
             // Atomically claim the round by flipping it out of 'ranking'.
             // Only the first stream to win this UPDATE will proceed; others get 0 rows.
-            $claim_stmt = $db->prepare(
-                "UPDATE rounds SET status = 'skipped' WHERE id = :id AND status = 'ranking'"
-            );
-            $claim_stmt->execute([':id' => $timed_out['id']]);
-
-            if ($claim_stmt->rowCount() === 1) {
+            if (dbx_claim_round_skip($db, (int) $timed_out['id']) === 1) {
                 $game  = hydrate_game($game_row);
                 $round = hydrate_round($timed_out);
 
@@ -227,8 +180,7 @@ while ((time() - $start) < $hold_duration) {
                 // but we already did it above — call the rest of the work directly.
                 $new_deck = array_merge($game->deckOrder, $round->cardIds);
 
-                $db->prepare('UPDATE games SET deck_order = :deck WHERE id = :id')
-                   ->execute([':deck' => json_encode($new_deck), ':id' => $game->id]);
+                     dbx_update_game_deck($db, $game->id, json_encode($new_deck));
 
                 insert_system_chat(
                     $db,
@@ -251,8 +203,7 @@ while ((time() - $start) < $hold_duration) {
                 );
 
                 if (!create_next_round($db, $updated_game)) {
-                    $db->prepare("UPDATE games SET status = 'draw' WHERE id = :id")
-                       ->execute([':id' => $game->id]);
+                    dbx_set_game_draw($db, $game->id);
                     insert_system_chat($db, $lobby_id, 'The deck ran out! The game is a draw.');
                 }
 
@@ -262,13 +213,7 @@ while ((time() - $start) < $hold_duration) {
     }
 
     // Check version.
-    $ver_stmt = $db->prepare(
-        'SELECT state_version FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1'
-    );
-    $ver_stmt->execute([':id' => $lobby_id]);
-    $ver_row = $ver_stmt->fetch();
-
-    $server_ver = $ver_row !== false ? (int) $ver_row['state_version'] : 0;
+    $server_ver = dbx_fetch_latest_state_version_by_lobby($db, $lobby_id);
 
     if ($first_iter || $server_ver !== $client_ver) {
         $first_iter = false;

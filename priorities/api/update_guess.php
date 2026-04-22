@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
@@ -38,14 +39,7 @@ if (!is_array($body) || !isset($body['ranking']) || !is_array($body['ranking']))
 $ranking = array_map('intval', $body['ranking']);
 
 // Load current guessing round.
-$stmt = $db->prepare(
-    "SELECT r.* FROM rounds r
-     JOIN games g ON g.id = r.game_id
-     WHERE g.lobby_id = :lobby_id AND r.status = 'guessing'
-    ORDER BY g.id DESC, r.round_number DESC LIMIT 1"
-);
-$stmt->execute([':lobby_id' => $player->lobbyId]);
-$row = $stmt->fetch();
+$row = dbx_fetch_round_by_status_for_lobby($db, $player->lobbyId, 'guessing');
 
 if ($row === false) {
     http_response_code(400);
@@ -74,8 +68,7 @@ if ($submitted_sorted !== $dealt_sorted) {
     exit;
 }
 
-$stmt2 = $db->prepare('UPDATE rounds SET group_ranking = :gr WHERE id = :id');
-$stmt2->execute([':gr' => json_encode($ranking), ':id' => (int) $row['id']]);
+dbx_update_round_group_ranking($db, (int) $row['id'], json_encode($ranking));
 
 bump_version($db, (int) $row['game_id']);
 

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 
 header('Content-Type: application/json');
@@ -30,30 +31,14 @@ $db = get_db();
 // Generate a unique 6-char uppercase lobby code.
 do {
     $code = strtoupper(substr(bin2hex(random_bytes(4)), 0, 6));
-    $stmt = $db->prepare("SELECT COUNT(*) FROM lobbies WHERE code = :code AND status != 'finished'");
-    $stmt->execute([':code' => $code]);
-} while ((int) $stmt->fetchColumn() > 0);
+} while (dbx_lobby_code_exists($db, $code));
 
 $token = bin2hex(random_bytes(32));
 
 $db->beginTransaction();
 try {
-    $stmt = $db->prepare(
-        "INSERT INTO lobbies (code, host_token, status, timer_enabled, timer_seconds) VALUES (:code, :token, 'waiting', :timer_enabled, :timer_seconds)"
-    );
-    $stmt->execute([':code' => $code, ':token' => $token, ':timer_enabled' => (int) $timer_enabled, ':timer_seconds' => $timer_seconds]);
-    $lobby_id = (int) $db->lastInsertId();
-
-    $stmt2 = $db->prepare(
-        "INSERT INTO players (lobby_id, name, session_token, is_host, turn_order)
-         VALUES (:lobby_id, :name, :token, 1, 0)"
-    );
-    $stmt2->execute([
-        ':lobby_id' => $lobby_id,
-        ':name'     => $name,
-        ':token'    => $token,
-    ]);
-    $player_id = (int) $db->lastInsertId();
+    $lobby_id = dbx_insert_lobby($db, $code, $token, $timer_enabled, $timer_seconds);
+    $player_id = dbx_insert_player($db, $lobby_id, $name, $token, true, 0);
 
     $db->commit();
 } catch (Throwable $e) {
