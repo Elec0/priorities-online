@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/session.php';
+require_once __DIR__ . '/db_access.php';
 $autoload_paths = [
     __DIR__ . '/../../vendor/autoload.php',
     __DIR__ . '/../vendor/autoload.php',
@@ -24,14 +25,7 @@ function validate_token(PDO $db): ?Player
         return null;
     }
 
-    $stmt = $db->prepare(
-        'SELECT id, lobby_id, name, session_token, is_host, turn_order, status, joined_at
-         FROM players
-         WHERE session_token = :token AND status = \'active\'
-         LIMIT 1'
-    );
-    $stmt->execute([':token' => $token]);
-    $row = $stmt->fetch();
+    $row = dbx_find_active_player_by_token($db, $token);
 
     if ($row === false) {
         return null;

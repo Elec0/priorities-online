@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/db_access.php';
+
 $autoload_paths = [
     __DIR__ . '/../../vendor/autoload.php',
     __DIR__ . '/../vendor/autoload.php',
@@ -102,16 +104,9 @@ function next_active_player_index(
  */
 function get_active_players(int $lobby_id, PDO $db): array
 {
-    $stmt = $db->prepare(
-        'SELECT id, lobby_id, name, session_token, is_host, turn_order, status, joined_at
-         FROM players
-         WHERE lobby_id = :lobby_id AND status = \'active\'
-         ORDER BY turn_order ASC'
-    );
-    $stmt->execute([':lobby_id' => $lobby_id]);
-
+    $rows = dbx_fetch_active_players_by_lobby($db, $lobby_id);
     $players = [];
-    foreach ($stmt->fetchAll() as $row) {
+    foreach ($rows as $row) {
         $players[] = new Player(
             id:           (int) $row['id'],
             lobbyId:      (int) $row['lobby_id'],
@@ -136,13 +131,9 @@ function award_letters(LetterMap $current_letters, array $won_card_ids, PDO $db)
         return $current_letters;
     }
 
-    $placeholders = implode(',', array_fill(0, count($won_card_ids), '?'));
-    $stmt = $db->prepare("SELECT letter FROM cards WHERE id IN ({$placeholders})");
-    $stmt->execute($won_card_ids);
-
     $map = $current_letters;
-    foreach ($stmt->fetchAll() as $row) {
-        $map = $map->withIncrement($row['letter']);
+    foreach (dbx_fetch_card_letters_by_ids($db, $won_card_ids) as $letter) {
+        $map = $map->withIncrement($letter);
     }
     return $map;
 }
@@ -188,17 +179,13 @@ function hydrate_round(array $row): Round
 /** Increment state_version by 1. */
 function bump_version(PDO $db, int $game_id): void
 {
-    $stmt = $db->prepare('UPDATE games SET state_version = state_version + 1 WHERE id = :id');
-    $stmt->execute([':id' => $game_id]);
+    dbx_increment_state_version($db, $game_id);
 }
 
 /** Insert a system chat message (player_id = NULL). */
 function insert_system_chat(PDO $db, int $lobby_id, string $message): void
 {
-    $stmt = $db->prepare(
-        'INSERT INTO chat_messages (lobby_id, player_id, message) VALUES (:lobby_id, NULL, :message)'
-    );
-    $stmt->execute([':lobby_id' => $lobby_id, ':message' => $message]);
+    dbx_insert_system_chat_message($db, $lobby_id, $message);
 }
 
 /**
@@ -235,45 +222,27 @@ function create_next_round(PDO $db, Game $game): bool
     $round_number = $game->currentRound + 1;
 
     // Look up timer settings from the lobby.
-    $timer_stmt = $db->prepare('SELECT timer_enabled, timer_seconds FROM lobbies WHERE id = :id');
-    $timer_stmt->execute([':id' => $game->lobbyId]);
-    $timer_row     = $timer_stmt->fetch();
-    $timer_enabled = $timer_row !== false && (bool) $timer_row['timer_enabled'];
-    $timer_seconds = $timer_row !== false ? max(10, (int) $timer_row['timer_seconds']) : 60;
+    $timer_settings = dbx_lobby_timer_settings($db, $game->lobbyId);
 
-    $deadline_sql = $timer_enabled
-        ? "DATE_ADD(NOW(), INTERVAL {$timer_seconds} SECOND)"
-        : 'NULL';
-
-    $stmt = $db->prepare(
-        "INSERT INTO rounds
-         (game_id, round_number, target_player_id, final_decider_id, card_ids, status, ranking_deadline)
-         VALUES (:game_id, :round_number, :target_id, :fd_id, :card_ids, 'ranking',
-                 {$deadline_sql})"
+    dbx_insert_round(
+        $db,
+        $game->id,
+        $round_number,
+        $target_player->id,
+        $fd_player->id,
+        json_encode($dealt),
+        $timer_settings['timer_enabled'],
+        $timer_settings['timer_seconds']
     );
-    $stmt->execute([
-        ':game_id'      => $game->id,
-        ':round_number' => $round_number,
-        ':target_id'    => $target_player->id,
-        ':fd_id'        => $fd_player->id,
-        ':card_ids'     => json_encode($dealt),
-    ]);
 
-    $stmt2 = $db->prepare(
-        'UPDATE games
-         SET current_round        = :round_number,
-             target_player_index  = :target_index,
-             final_decider_index  = :fd_index,
-             deck_order           = :deck_order
-         WHERE id = :id'
+    dbx_update_game_for_next_round(
+        $db,
+        $game->id,
+        $round_number,
+        $new_target_index,
+        $new_fd_index,
+        json_encode($remaining)
     );
-    $stmt2->execute([
-        ':round_number'  => $round_number,
-        ':target_index'  => $new_target_index,
-        ':fd_index'      => $new_fd_index,
-        ':deck_order'    => json_encode($remaining),
-        ':id'            => $game->id,
-    ]);
 
     return true;
 }
@@ -287,15 +256,8 @@ function skip_round(PDO $db, Game $game, Round $round, string $skipped_player_na
     // Return cards to the bottom of the deck.
     $new_deck = array_merge($game->deckOrder, $round->cardIds);
 
-    $stmt = $db->prepare(
-        'UPDATE rounds SET status = \'skipped\' WHERE id = :id'
-    );
-    $stmt->execute([':id' => $round->id]);
-
-    $stmt2 = $db->prepare(
-        'UPDATE games SET deck_order = :deck WHERE id = :id'
-    );
-    $stmt2->execute([':deck' => json_encode($new_deck), ':id' => $game->id]);
+    dbx_mark_round_skipped($db, $round->id);
+    dbx_update_game_deck($db, $game->id, json_encode($new_deck));
 
     insert_system_chat(
         $db,
@@ -319,8 +281,7 @@ function skip_round(PDO $db, Game $game, Round $round, string $skipped_player_na
     );
 
     if (!create_next_round($db, $updated_game)) {
-        $stmt3 = $db->prepare("UPDATE games SET status = 'draw' WHERE id = :id");
-        $stmt3->execute([':id' => $game->id]);
+        dbx_set_game_draw($db, $game->id);
         insert_system_chat($db, $game->lobbyId, 'The deck ran out! The game is a draw.');
     }
 

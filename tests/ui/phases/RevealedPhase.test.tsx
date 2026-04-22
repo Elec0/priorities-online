@@ -34,10 +34,11 @@ describe('RevealedPhase', () => {
 
   it('renders cards in target_ranking order', () => {
     render(<RevealedPhase state={revealedState} />);
-    const positions = document.querySelectorAll('.card-position');
+    // There are two columns; the first column is target ranking
     // target_ranking = [3, 1, 2] → Ice cream(3), Pizza(1), Rain(2)
-    const contents = Array.from(document.querySelectorAll('.card-content')).map(el => el.textContent);
-    expect(contents).toEqual(['Ice cream', 'Pizza', 'Rain']);
+    const cols = document.querySelectorAll('.reveal-col');
+    const targetContents = Array.from(cols[0].querySelectorAll('.card-content')).map(el => el.textContent);
+    expect(targetContents).toEqual(['Ice cream', 'Pizza', 'Rain']);
   });
 
   it('annotates cards with correct/incorrect classes', () => {
@@ -55,6 +56,7 @@ describe('RevealedPhase', () => {
         id: 1, number: 1, status: 'revealed',
         card_ids: [1, 2, 3], cards,
         group_ranking: null,
+        target_ranking: [1, 2, 3],
         ranking_deadline: null,
         result: [],
       },
@@ -78,7 +80,9 @@ describe('RevealedPhase', () => {
       final_decider: playerBob,
     });
     render(<RevealedPhase state={state} />);
-    const contents = Array.from(document.querySelectorAll('.card-content')).map(el => el.textContent);
-    expect(contents).toEqual(['Pizza', 'Rain', 'Ice cream']);
+    // Two columns rendered; first column is the target (falls back to card_ids)
+    const cols = document.querySelectorAll('.reveal-col');
+    const targetContents = Array.from(cols[0].querySelectorAll('.card-content')).map(el => el.textContent);
+    expect(targetContents).toEqual(['Pizza', 'Rain', 'Ice cream']);
   });
 });

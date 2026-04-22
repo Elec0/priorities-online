@@ -33,12 +33,12 @@ export function RevealedPhase({ state, playerId }: Props) {
 
   // Build a card_id → result map so both columns can share the same coloring.
   const resultByCardId = new Map<number, ScoreResultState>(results.map(r => [r.card_id, r]));
-  const targetResults  = targetCards.map(c => resultByCardId.get(c.id))  as ScoreResultState[];
+  const targetResults  = targetCards.map(c => resultByCardId.get(c.id)).filter((r): r is ScoreResultState => r !== undefined);
 
   // Right column: group's guess ordering.
   const groupOrder = round.group_ranking ?? round.card_ids;
   const groupCards   = groupOrder.map(id => round.cards.find(c => c.id === id)!);
-  const groupResults = groupCards.map(c => resultByCardId.get(c.id)) as ScoreResultState[];
+  const groupResults = groupCards.map(c => resultByCardId.get(c.id)).filter((r): r is ScoreResultState => r !== undefined);
 
   const correctCount = results.filter(r => r.correct).length;
 

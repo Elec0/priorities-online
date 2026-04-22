@@ -51,6 +51,7 @@ function CardItem({ card, index, draggable, result }: CardItemProps) {
       <span className="card-position">{index + 1}</span>
       <span className="card-emoji">{card.emoji}</span>
       <span className="card-content">{card.content}</span>
+      <span className="card-letter">{card.letter}</span>
       {result !== undefined && (
         <span className="card-result-icon">{result.correct ? '✓' : '✗'}</span>
       )}

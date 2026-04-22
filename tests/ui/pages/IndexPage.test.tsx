@@ -65,7 +65,7 @@ describe('IndexPage', () => {
       render(<IndexPage />);
       await user.type(screen.getByLabelText(/Your name/i), 'Alice');
       await user.click(form().getByRole('button', { name: 'Create Lobby' }));
-      await waitFor(() => expect(mockCreateLobby).toHaveBeenCalledWith('Alice', undefined));
+      await waitFor(() => expect(mockCreateLobby).toHaveBeenCalledWith('Alice', true, 60, undefined));
       expect(hrefAssigned).toBe('/priorities/lobby.php?lobby_id=1');
     });
 

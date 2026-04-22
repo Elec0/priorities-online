@@ -4,7 +4,7 @@ import { GuessingPhase } from '../../../priorities/assets/js/phases/GuessingPhas
 import { makeGameState, playerAlice, playerBob, playerCarol, cards } from '../fixtures';
 
 vi.mock('../../../priorities/assets/js/api', () => ({
-  updateGuess:  vi.fn(),
+  updateGuess:  vi.fn().mockResolvedValue({ success: true }),
   lockInGuess:  vi.fn(),
 }));
 
@@ -23,7 +23,10 @@ describe('GuessingPhase', () => {
     final_decider: playerBob,
   });
 
-  beforeEach(() => mockLockInGuess.mockReset());
+  beforeEach(() => {
+    mockLockInGuess.mockReset();
+    window.sessionStorage.clear();
+  });
 
   it('shows waiting message to the target player', () => {
     render(<GuessingPhase state={guessingState} playerId={playerAlice.id} />);
@@ -79,5 +82,61 @@ describe('GuessingPhase', () => {
     expect(screen.getByText('Pizza')).toBeInTheDocument();
     expect(screen.getByText('Rain')).toBeInTheDocument();
     expect(screen.getByText('Ice cream')).toBeInTheDocument();
+  });
+
+  it('keeps showing the target submitted order after transitioning to guessing', () => {
+    window.sessionStorage.setItem('targetSubmittedOrder:1', JSON.stringify([3, 1, 2]));
+
+    render(<GuessingPhase state={guessingState} playerId={playerAlice.id} />);
+
+    const columns = document.querySelectorAll('.reveal-col');
+    const submittedOrder = Array.from(columns[0].querySelectorAll('.card-content')).map(el => el.textContent?.trim());
+    expect(submittedOrder).toEqual(['Ice cream', 'Pizza', 'Rain']);
+  });
+
+  it('shows target two columns and updates the group guess column from SSE state', () => {
+    window.sessionStorage.setItem('targetSubmittedOrder:1', JSON.stringify([3, 1, 2]));
+
+    const initialState = makeGameState({
+      round: {
+        id: 1, number: 1, status: 'guessing',
+        card_ids: [1, 2, 3], cards,
+        group_ranking: [1, 2, 3],
+        ranking_deadline: null,
+      },
+      target_player: playerAlice,
+      final_decider: playerBob,
+    });
+
+    const { rerender } = render(<GuessingPhase state={initialState} playerId={playerAlice.id} />);
+
+    const labels = Array.from(document.querySelectorAll('.revealed-col-label')).map(el => el.textContent?.trim());
+    expect(labels).toEqual(['Your Submitted Order', 'Current Group Guess']);
+
+    const columns = document.querySelectorAll('.reveal-col');
+    const submittedOrder = Array.from(columns[0].querySelectorAll('.card-content')).map(el => el.textContent?.trim());
+    const initialGuess = Array.from(columns[1].querySelectorAll('.card-content')).map(el => el.textContent?.trim());
+
+    expect(submittedOrder).toEqual(['Ice cream', 'Pizza', 'Rain']);
+    expect(initialGuess).toEqual(['Pizza', 'Rain', 'Ice cream']);
+
+    const updatedState = makeGameState({
+      round: {
+        id: 1, number: 1, status: 'guessing',
+        card_ids: [1, 2, 3], cards,
+        group_ranking: [2, 1, 3],
+        ranking_deadline: null,
+      },
+      target_player: playerAlice,
+      final_decider: playerBob,
+    });
+
+    rerender(<GuessingPhase state={updatedState} playerId={playerAlice.id} />);
+
+    const updatedSubmittedOrder = Array.from(columns[0].querySelectorAll('.card-content')).map(el => el.textContent?.trim());
+    const updatedGuess = Array.from(columns[1].querySelectorAll('.card-content')).map(el => el.textContent?.trim());
+
+    expect(updatedSubmittedOrder).toEqual(['Ice cream', 'Pizza', 'Rain']);
+    expect(updatedGuess).toEqual(['Rain', 'Pizza', 'Ice cream']);
   });
 });

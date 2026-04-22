@@ -13,6 +13,7 @@ interface Props {
 export function RankingPhase({ state, playerId }: Props) {
   const { round, target_player } = state;
   const isTarget = playerId === target_player.id;
+  const submittedOrderStorageKey = `targetSubmittedOrder:${round.id}`;
 
   // Shuffle the card display order uniquely per player using seeded RNG
   // This ensures each player sees cards in a different visual order,
@@ -55,6 +56,7 @@ export function RankingPhase({ state, playerId }: Props) {
     setSubmitting(true);
     try {
       await submitRanking(orderedIds);
+      window.sessionStorage.setItem(submittedOrderStorageKey, JSON.stringify(orderedIds));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit');
       setSubmitting(false);

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/db_access.php';
 require_once __DIR__ . '/../includes/session.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/game_logic.php';
@@ -23,14 +24,7 @@ $db     = get_db();
 $player = require_player($db);
 
 // Load current guessing round.
-$stmt = $db->prepare(
-    "SELECT r.* FROM rounds r
-     JOIN games g ON g.id = r.game_id
-     WHERE g.lobby_id = :lobby_id AND r.status = 'guessing'
-     ORDER BY r.round_number DESC LIMIT 1"
-);
-$stmt->execute([':lobby_id' => $player->lobbyId]);
-$row = $stmt->fetch();
+$row = dbx_fetch_round_by_status_for_lobby($db, $player->lobbyId, 'guessing');
 
 if ($row === false) {
     http_response_code(400);
@@ -58,8 +52,7 @@ require_is_final_decider($player, $round);
 $effectiveGroupRanking = $round->groupRanking ?? $round->cardIds;
 if ($round->groupRanking === null) {
     // Persist the fallback so score_round sees it.
-    $set_stmt = $db->prepare("UPDATE rounds SET group_ranking = :gr WHERE id = :id");
-    $set_stmt->execute([':gr' => json_encode($effectiveGroupRanking), ':id' => $round->id]);
+    dbx_update_round_group_ranking($db, $round->id, json_encode($effectiveGroupRanking));
     $round = new Round(
         id:              $round->id,
         gameId:          $round->gameId,
@@ -76,9 +69,7 @@ if ($round->groupRanking === null) {
 }
 
 // Load game.
-$game_stmt = $db->prepare('SELECT * FROM games WHERE id = :id LIMIT 1');
-$game_stmt->execute([':id' => $round->gameId]);
-$game_row = $game_stmt->fetch();
+$game_row = dbx_fetch_game_by_id($db, $round->gameId);
 
 $pl_map = json_decode($game_row['player_letters'], true);
 $gl_map = json_decode($game_row['game_letters'], true);
@@ -121,10 +112,7 @@ try {
     ));
 
     // Update round.
-    $stmt2 = $db->prepare(
-        "UPDATE rounds SET result = :result, status = 'revealed' WHERE id = :id"
-    );
-    $stmt2->execute([':result' => $result_json, ':id' => $round->id]);
+    dbx_update_round_result_revealed($db, $round->id, $result_json);
 
     // Check win conditions.
     $players_win = check_win($new_player_letters);
@@ -138,15 +126,13 @@ try {
     }
 
     // Update game with new letter counts and possibly new status.
-    $stmt3 = $db->prepare(
-        'UPDATE games SET player_letters = :pl, game_letters = :gl, status = :status WHERE id = :id'
+    dbx_update_game_letters_and_status(
+        $db,
+        $game->id,
+        json_encode($new_player_letters->toArray()),
+        json_encode($new_game_letters->toArray()),
+        $new_status
     );
-    $stmt3->execute([
-        ':pl'     => json_encode($new_player_letters->toArray()),
-        ':gl'     => json_encode($new_game_letters->toArray()),
-        ':status' => $new_status,
-        ':id'     => $game->id,
-    ]);
 
     $correct_count = count($player_won_ids);
     $total         = count($results);

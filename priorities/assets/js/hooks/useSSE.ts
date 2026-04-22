@@ -5,17 +5,26 @@ export function useSSE(lobbyId: number, initialVersion: number) {
   const [state, setState] = useState<StreamState | null>(null);
   const versionRef = useRef<number>(initialVersion);
 
+  const devProfile = new URLSearchParams(window.location.search).get('dev_profile');
+  const devProfileParam = devProfile ? `&dev_profile=${encodeURIComponent(devProfile)}` : '';
+
   useEffect(() => {
     let es: EventSource | null = null;
     let cancelled = false;
 
     function connect() {
       if (cancelled) return;
-      const url = `api/stream.php?lobby_id=${lobbyId}&state_version=${versionRef.current}`;
+      const url = `api/stream.php?lobby_id=${lobbyId}&state_version=${versionRef.current}${devProfileParam}`;
       es = new EventSource(url);
 
       es.onmessage = (event: MessageEvent) => {
         const data = JSON.parse(event.data) as StreamState;
+
+        if (data.lobby_status === 'unauthorized') {
+          window.location.href = devProfile ? `./?dev_profile=${encodeURIComponent(devProfile)}` : './';
+          return;
+        }
+
         versionRef.current = data.state_version;
         setState(data);
       };
@@ -36,7 +45,7 @@ export function useSSE(lobbyId: number, initialVersion: number) {
       cancelled = true;
       es?.close();
     };
-  }, [lobbyId]);
+  }, [lobbyId, devProfileParam, devProfile]);
 
   return { state, version: versionRef.current };
 }

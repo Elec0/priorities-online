@@ -81,4 +81,9 @@ export interface GameState {
   chat: ChatMessage[];
 }
 
-export type StreamState = LobbyState | GameState;
+export interface UnauthorizedState {
+  state_version: number;
+  lobby_status: 'unauthorized';
+}
+
+export type StreamState = LobbyState | GameState | UnauthorizedState;
