@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { restartGame } from '../api';
 import { LetterTiles } from '../components/LetterTiles';
+import { CardList } from '../components/CardList';
 import type { GameState } from '../types';
 
 interface Props {
@@ -11,7 +12,7 @@ interface Props {
 }
 
 export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) {
-  const { game_status, player_letters, game_letters, players } = state;
+  const { game_status, player_letters, game_letters, players, round } = state;
   const [restarting, setRestarting] = useState(false);
 
   const me = players.find(p => p.id === playerId);
@@ -23,6 +24,12 @@ export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) 
     draw:        '🤝 It\'s a draw — the deck ran out!',
     active:      '',
   }[game_status] ?? '';
+
+  const cardsById = new Map(round.cards.map(card => [card.id, card] as const));
+  const correctOrder = round.target_ranking ?? [];
+  const guessOrder = round.group_ranking ?? [];
+  const correctCards = correctOrder.map(id => cardsById.get(id)).filter((c): c is NonNullable<typeof c> => c !== undefined);
+  const guessCards = guessOrder.map(id => cardsById.get(id)).filter((c): c is NonNullable<typeof c> => c !== undefined);
 
   function handleReturn() {
     window.location.href = 'index.php';
@@ -43,8 +50,28 @@ export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) 
   }
 
   return (
-    <div className="phase game-over-screen">
+    <div className="game-over-screen">
       <h2 className="game-over-title">{message}</h2>
+
+      <div className="reveal-cols" aria-label="Final round orders">
+        <div className="reveal-col">
+          <p className="revealed-col-label">Correct Order</p>
+          {correctCards.length > 0 ? (
+            <CardList cards={correctCards} draggable={false} />
+          ) : (
+            <p className="waiting-msg">No final correct order available.</p>
+          )}
+        </div>
+
+        <div className="reveal-col">
+          <p className="revealed-col-label">Final Guess Order</p>
+          {guessCards.length > 0 ? (
+            <CardList cards={guessCards} draggable={false} />
+          ) : (
+            <p className="waiting-msg">No final guess order available.</p>
+          )}
+        </div>
+      </div>
 
       <div className="final-letters">
         <LetterTiles label="Players" letters={player_letters} />

@@ -274,6 +274,33 @@ test.describe('Game flow', () => {
     }
   });
 
+  test('game over screen shows final correct order and final guess order', async ({ browser }) => {
+    const { pages, contexts } = await startThreePlayerGame(browser);
+    const [hostPage] = pages;
+
+    try {
+      const hostPlayerId = parseInt((await hostPage.locator('#root').getAttribute('data-player-id')) ?? '0', 10);
+      expect(hostPlayerId).toBeGreaterThan(0);
+
+      await mockRestartFlowState(hostPage, hostPlayerId);
+      await hostPage.reload();
+
+      await expect(hostPage.locator('.game-over-screen')).toBeVisible({ timeout: 15_000 });
+      await expect(hostPage.locator('.revealed-col-label')).toContainText(['Correct Order', 'Final Guess Order']);
+
+      const columns = hostPage.locator('.reveal-col');
+      await expect(columns).toHaveCount(2);
+
+      const correctItems = columns.nth(0).locator('.card-content');
+      await expect(correctItems).toHaveText(['Pizza', 'Rain', 'Ice cream']);
+
+      const guessItems = columns.nth(1).locator('.card-content');
+      await expect(guessItems).toHaveText(['Rain', 'Pizza', 'Ice cream']);
+    } finally {
+      await Promise.all(contexts.map(c => c.close()));
+    }
+  });
+
   test('restart API rejects host while game is still active', async ({ browser }) => {
     const { pages, contexts } = await startThreePlayerGame(browser);
     const [hostPage] = pages;
