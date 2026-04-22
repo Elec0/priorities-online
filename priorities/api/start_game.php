@@ -36,7 +36,7 @@ if (count($active_players) < 3) {
 // Shuffle all card IDs.
 $stmt2 = $db->prepare('SELECT id FROM cards');
 $stmt2->execute();
-$card_ids = array_column($stmt2->fetchAll(), 'id');
+$card_ids = array_map('intval', array_column($stmt2->fetchAll(), 'id'));
 shuffle($card_ids);
 
 // Deal first 5 cards.

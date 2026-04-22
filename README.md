@@ -168,6 +168,50 @@ php -m
 4. Run `seed_cards.php` to populate the card table
 5. Ensure `mod_rewrite` is enabled and `.htaccess` is allowed
 
+### Reset and Re-import Database Schema
+
+Use this when production schema drift is suspected.
+
+1. Backup the current database first.
+2. Drop existing app tables.
+3. Re-import [priorities/db/schema.sql](priorities/db/schema.sql).
+4. Re-seed cards from [priorities/db/seed_cards.php](priorities/db/seed_cards.php).
+
+#### Option A: SQL (phpMyAdmin or MySQL client)
+
+Run this in your app database:
+
+```sql
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS
+	schema_migrations,
+	chat_messages,
+	rounds,
+	games,
+	players,
+	lobbies,
+	cards;
+SET FOREIGN_KEY_CHECKS = 1;
+```
+
+Then import [priorities/db/schema.sql](priorities/db/schema.sql).
+
+#### Option B: MySQL CLI example
+
+```bash
+# Drop app tables
+mysql -h <DB_HOST> -u <DB_USER> -p <DB_NAME> -e "SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS schema_migrations, chat_messages, rounds, games, players, lobbies, cards; SET FOREIGN_KEY_CHECKS=1;"
+
+# Re-import schema
+mysql -h <DB_HOST> -u <DB_USER> -p <DB_NAME> < priorities/db/schema.sql
+```
+
+After schema import, run the card seed script:
+
+```bash
+php priorities/db/seed_cards.php
+```
+
 ### Applying DB Migrations On Deploy
 
 This project includes a migration runner at [priorities/db/migrate.php](priorities/db/migrate.php) that:

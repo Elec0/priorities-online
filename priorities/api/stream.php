@@ -42,7 +42,7 @@ function build_state_payload(int $lobby_id, PDO $db): array
     $chat = array_reverse($stmt2->fetchAll());
 
     if ($lobby_row['status'] === 'waiting') {
-        $stmt3 = $db->prepare("SELECT state_version FROM games WHERE lobby_id = :id LIMIT 1");
+        $stmt3 = $db->prepare("SELECT state_version FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1");
         $stmt3->execute([':id' => $lobby_id]);
         $ver_row    = $stmt3->fetch();
         $state_ver  = $ver_row !== false ? (int) $ver_row['state_version'] : 0;
@@ -58,7 +58,7 @@ function build_state_payload(int $lobby_id, PDO $db): array
     }
 
     // Playing state
-    $stmt4 = $db->prepare("SELECT * FROM games WHERE lobby_id = :id LIMIT 1");
+    $stmt4 = $db->prepare("SELECT * FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1");
     $stmt4->execute([':id' => $lobby_id]);
     $game_row = $stmt4->fetch();
 
@@ -205,7 +205,7 @@ while ((time() - $start) < $hold_duration) {
     $timed_out = $timeout_stmt->fetch();
 
     if ($timed_out !== false) {
-        $game_stmt = $db->prepare('SELECT * FROM games WHERE lobby_id = :id LIMIT 1');
+        $game_stmt = $db->prepare('SELECT * FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1');
         $game_stmt->execute([':id' => $lobby_id]);
         $game_row = $game_stmt->fetch();
 
@@ -263,7 +263,7 @@ while ((time() - $start) < $hold_duration) {
 
     // Check version.
     $ver_stmt = $db->prepare(
-        'SELECT state_version FROM games WHERE lobby_id = :id LIMIT 1'
+        'SELECT state_version FROM games WHERE lobby_id = :id ORDER BY id DESC LIMIT 1'
     );
     $ver_stmt->execute([':id' => $lobby_id]);
     $ver_row = $ver_stmt->fetch();

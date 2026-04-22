@@ -30,7 +30,7 @@ $stmt = $db->prepare(
     "SELECT r.* FROM rounds r
      JOIN games g ON g.id = r.game_id
      WHERE g.lobby_id = :lobby_id AND r.status = 'ranking'
-     ORDER BY r.round_number DESC LIMIT 1"
+    ORDER BY g.id DESC, r.round_number DESC LIMIT 1"
 );
 $stmt->execute([':lobby_id' => $player->lobbyId]);
 $row = $stmt->fetch();
@@ -48,7 +48,7 @@ $round = new Round(
     roundNumber:     (int) $row['round_number'],
     targetPlayerId:  (int) $row['target_player_id'],
     finalDeciderId:  (int) $row['final_decider_id'],
-    cardIds:         json_decode($row['card_ids'], true),
+    cardIds:         array_map('intval', json_decode($row['card_ids'], true)),
     targetRanking:   null,
     groupRanking:    null,
     result:          null,

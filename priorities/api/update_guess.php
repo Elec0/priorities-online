@@ -42,7 +42,7 @@ $stmt = $db->prepare(
     "SELECT r.* FROM rounds r
      JOIN games g ON g.id = r.game_id
      WHERE g.lobby_id = :lobby_id AND r.status = 'guessing'
-     ORDER BY r.round_number DESC LIMIT 1"
+    ORDER BY g.id DESC, r.round_number DESC LIMIT 1"
 );
 $stmt->execute([':lobby_id' => $player->lobbyId]);
 $row = $stmt->fetch();
@@ -53,7 +53,7 @@ if ($row === false) {
     exit;
 }
 
-$card_ids = json_decode($row['card_ids'], true);
+$card_ids = array_map('intval', json_decode($row['card_ids'], true));
 $target_player_id = (int) $row['target_player_id'];
 
 // Target player cannot update group guess.
