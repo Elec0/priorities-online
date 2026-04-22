@@ -196,6 +196,7 @@ label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; 
 /* ── Phase layouts ───────────────────────────────────────────────────────── */
 .phase { max-width: 520px; }
 .phase.revealed-phase { max-width: none; }
+.phase.guessing-phase.target-view { max-width: none; }
 .phase-label { margin-bottom: 1rem; font-size: 1rem; }
 
 /* ── Card list ───────────────────────────────────────────────────────────── */

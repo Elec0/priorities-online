@@ -42,17 +42,16 @@ export function GuessingPhase({ state, playerId }: Props) {
   const initRef = useRef(false);
   const pendingOrderKeyRef = useRef<string | null>(null);
 
-  // Default shuffled order for initial display
-  // - Target player: unique shuffle (seed = round.id + playerId)
-  // - All guessers: same shuffle (seed = round.id only) so they can discuss
-  const defaultShuffledCards = useMemo(() => {
-    const seed = isTarget ? (round.id + playerId) : round.id;
-    return shuffleWithSeed([...round.cards], seed);
-  }, [round.id, round.cards, isTarget, playerId]);
+  // Target's own baseline visual order (pre-submission fallback).
+  const targetDefaultOrder = useMemo(
+    () => shuffleWithSeed([...round.cards], round.id + playerId).map(c => c.id),
+    [round.id, round.cards, playerId],
+  );
 
-  const defaultOrder = useMemo(
-    () => defaultShuffledCards.map(c => c.id),
-    [defaultShuffledCards],
+  // Shared guesser baseline order (used until group_ranking exists).
+  const guesserDefaultOrder = useMemo(
+    () => shuffleWithSeed([...round.cards], round.id).map(c => c.id),
+    [round.id, round.cards],
   );
 
   const cardsById = useMemo(
@@ -65,7 +64,7 @@ export function GuessingPhase({ state, playerId }: Props) {
     return readSubmittedTargetOrder(round.id, round.card_ids);
   }, [isTarget, round.id, round.card_ids]);
 
-  const serverOrder = round.group_ranking ?? defaultOrder;
+  const serverOrder = round.group_ranking ?? guesserDefaultOrder;
   const [localOrder, setLocalOrder] = useState<number[]>(serverOrder);
 
   // Reset optimistic order when round changes.
@@ -108,7 +107,7 @@ export function GuessingPhase({ state, playerId }: Props) {
   const displayCards = useMemo(() => {
     if (isTarget) {
       // Keep showing the exact order the target submitted when available.
-      const submittedOrder = targetSubmittedOrder ?? defaultOrder;
+      const submittedOrder = targetSubmittedOrder ?? targetDefaultOrder;
       return submittedOrder
         .map(id => cardsById.get(id))
         .filter((c): c is NonNullable<typeof c> => c !== undefined);
@@ -118,7 +117,15 @@ export function GuessingPhase({ state, playerId }: Props) {
     return localOrder
       .map(id => cardsById.get(id))
       .filter((c): c is NonNullable<typeof c> => c !== undefined);
-  }, [isTarget, targetSubmittedOrder, defaultOrder, cardsById, localOrder]);
+  }, [isTarget, targetSubmittedOrder, targetDefaultOrder, cardsById, localOrder]);
+
+  // For target's second column: always show the current collaborative guess order.
+  const guesserLiveCards = useMemo(() => {
+    const order = round.group_ranking ?? guesserDefaultOrder;
+    return order
+      .map(id => cardsById.get(id))
+      .filter((c): c is NonNullable<typeof c> => c !== undefined);
+  }, [round.group_ranking, guesserDefaultOrder, cardsById]);
 
   // Initialize group_ranking with the shuffled order this player sees (if not already set and it's a non-target player)
   useEffect(() => {
@@ -128,10 +135,10 @@ export function GuessingPhase({ state, playerId }: Props) {
     initRef.current = true;
     
     // Submit the initial shuffled display order as the default group guess
-    const initialOrder = defaultOrder;
+    const initialOrder = guesserDefaultOrder;
     setLocalOrder(initialOrder);
     updateGuess(initialOrder).catch(() => {/* ignore errors on initial setup */});
-  }, [isTarget, round.group_ranking, defaultOrder]);
+  }, [isTarget, round.group_ranking, guesserDefaultOrder]);
 
   const handleReorder = useCallback((orderedIds: number[]) => {
     pendingOrderKeyRef.current = orderedIds.join(',');
@@ -154,18 +161,31 @@ export function GuessingPhase({ state, playerId }: Props) {
   }
 
   return (
-    <div className="phase guessing-phase">
+    <div className={`phase guessing-phase${isTarget ? ' target-view' : ''}`}>
       <p className="phase-label">
         {isTarget
           ? `Everyone is guessing your ranking, ${target_player.name}…`
           : `Arrange the cards to match ${target_player.name}'s secret ranking.`}
       </p>
 
-      <CardList
-        cards={displayCards}
-        draggable={!isTarget}
-        onReorder={!isTarget ? handleReorder : undefined}
-      />
+      {isTarget ? (
+        <div className="reveal-cols" aria-label="Target and guesser orders">
+          <div className="reveal-col">
+            <p className="revealed-col-label">Your Submitted Order</p>
+            <CardList cards={displayCards} draggable={false} />
+          </div>
+          <div className="reveal-col">
+            <p className="revealed-col-label">Current Group Guess</p>
+            <CardList cards={guesserLiveCards} draggable={false} />
+          </div>
+        </div>
+      ) : (
+        <CardList
+          cards={displayCards}
+          draggable
+          onReorder={handleReorder}
+        />
+      )}
 
       {isFinalDecider && !isTarget && (
         <button className="action-btn lock-btn" onClick={handleLockIn}>
