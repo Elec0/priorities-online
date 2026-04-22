@@ -139,13 +139,9 @@ function fetch_player_by_id(int $id, PDO $db): Player
 // ── SSE stream ────────────────────────────────────────────────────────────────
 
 $db = get_db();
-$player = require_player($db);
 
-$lobby_id     = (int) ($_GET['lobby_id'] ?? 0);
-$client_ver   = (int) ($_GET['state_version'] ?? 0);
-
-// Stale lobby cleanup (piggyback on connection).
-dbx_delete_stale_lobbies($db);
+$lobby_id   = (int) ($_GET['lobby_id'] ?? 0);
+$client_ver = (int) ($_GET['state_version'] ?? 0);
 
 header('Content-Type: text/event-stream');
 header('Cache-Control: no-cache');
@@ -154,6 +150,16 @@ header('Connection: keep-alive');
 
 // Flush output buffers so headers go immediately.
 if (ob_get_level()) ob_end_flush();
+
+$player = validate_token($db);
+if ($player === null || $player->lobbyId !== $lobby_id) {
+    echo "data: {\"state_version\":0,\"lobby_status\":\"unauthorized\"}\n\n";
+    flush();
+    exit;
+}
+
+// Stale lobby cleanup (piggyback on connection).
+dbx_delete_stale_lobbies($db);
 
 $hold_duration = 30;
 $poll_interval = 300_000; // 300ms in microseconds

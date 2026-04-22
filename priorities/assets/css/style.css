@@ -226,7 +226,7 @@ label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; 
 .countdown.countdown-warning { color: var(--clr-warning); font-weight: bold; }
 
 /* ── Action buttons ──────────────────────────────────────────────────────── */
-.action-btn { margin-top: 1rem; padding: 0.75rem 2rem; font-size: 1rem; }
+.action-btn { margin-top: 1rem; padding: 0.75rem 1rem; font-size: 1rem; margin-left: 0.25rem; }
 .lock-btn   { background: #2196f3; }
 .fd-hint    { font-size: 0.8rem; color: var(--clr-muted); margin-top: 0.5rem; }
 

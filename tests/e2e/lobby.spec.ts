@@ -71,4 +71,42 @@ test.describe('Lobby', () => {
       await ctx3.close();
     }
   });
+
+  test('kicked player is redirected to home and host can still start with remaining 3 players', async ({ browser }) => {
+    const { context: hostCtx, page: hostPage, code } = await createLobby(browser, 'Alice');
+    const { context: bobCtx, page: bobPage } = await joinLobby(browser, 'Bob', code);
+    const { context: carolCtx, page: carolPage } = await joinLobby(browser, 'Carol', code);
+    const { context: daveCtx, page: davePage } = await joinLobby(browser, 'Dave', code);
+
+    try {
+      // Wait for host to see all 4 players, then kick Bob.
+      await expect(hostPage.locator('.player-list .player-item')).toHaveCount(4);
+      await hostPage.locator('.player-item', { hasText: 'Bob' }).locator('.kick-btn').click();
+
+      // Host should now see 3 players and still be allowed to start.
+      await expect(hostPage.locator('.player-list .player-item')).toHaveCount(3);
+      await expect(hostPage.locator('.start-btn')).toBeEnabled();
+
+      // Bob should be redirected out of the lobby.
+      await bobPage.waitForURL(/\/priorities\/$/);
+
+      await hostPage.locator('.start-btn').click();
+
+      // Remaining active players should enter the game.
+      await Promise.all([
+        hostPage.waitForURL(/\/priorities\/game\.php/),
+        carolPage.waitForURL(/\/priorities\/game\.php/),
+        davePage.waitForURL(/\/priorities\/game\.php/),
+      ]);
+
+      for (const p of [hostPage, carolPage, davePage]) {
+        await expect(p.locator('.game-page')).toBeVisible({ timeout: 10_000 });
+      }
+    } finally {
+      await hostCtx.close();
+      await bobCtx.close();
+      await carolCtx.close();
+      await daveCtx.close();
+    }
+  });
 });

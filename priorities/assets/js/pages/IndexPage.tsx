@@ -114,6 +114,7 @@ export function IndexPage() {
               value={code}
               maxLength={6}
               required
+              autoFocus
               placeholder="ABCDEF"
               onChange={e => setCode(e.target.value.toUpperCase())}
             />
@@ -125,7 +126,6 @@ export function IndexPage() {
               value={name}
               maxLength={50}
               required
-              autoFocus
               onChange={e => setName(e.target.value)}
             />
           </label>
