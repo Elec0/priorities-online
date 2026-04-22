@@ -1,6 +1,91 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createLobby, joinLobby } from './helpers';
 
+function makeGameOverSsePayload(hostPlayerId: number) {
+  return {
+    state_version: 999,
+    lobby_status: 'playing' as const,
+    lobby_code: 'ABCDEF',
+    game_id: 1,
+    game_status: 'draw' as const,
+    round: {
+      id: 9,
+      number: 9,
+      status: 'revealed' as const,
+      card_ids: [1, 2, 3],
+      cards: [
+        { id: 1, content: 'Pizza', category: 'food', emoji: '🍕', letter: 'P' },
+        { id: 2, content: 'Rain', category: 'weather', emoji: '🌧️', letter: 'R' },
+        { id: 3, content: 'Ice cream', category: 'food', emoji: '🍦', letter: 'I' },
+      ],
+      group_ranking: [2, 1, 3],
+      target_ranking: [1, 2, 3],
+      result: [
+        { card_id: 1, correct: false },
+        { card_id: 2, correct: false },
+        { card_id: 3, correct: true },
+      ],
+      ranking_deadline: null,
+    },
+    target_player: { id: hostPlayerId, name: 'Alice', turn_order: 0, is_host: true, status: 'active' as const },
+    final_decider: { id: hostPlayerId + 1, name: 'Bob', turn_order: 1, is_host: false, status: 'active' as const },
+    players: [
+      { id: hostPlayerId, name: 'Alice', turn_order: 0, is_host: true, status: 'active' as const },
+      { id: hostPlayerId + 1, name: 'Bob', turn_order: 1, is_host: false, status: 'active' as const },
+      { id: hostPlayerId + 2, name: 'Carol', turn_order: 2, is_host: false, status: 'active' as const },
+    ],
+    player_letters: { P: 1, R: 1, I: 1, O: 1, T: 0, E: 0, S: 0 },
+    game_letters: { P: 1, R: 1, I: 1, O: 1, T: 1, E: 1, S: 1 },
+    chat: [],
+  };
+}
+
+function makeLobbyWaitingSsePayload(hostPlayerId: number) {
+  return {
+    state_version: 1000,
+    lobby_status: 'waiting' as const,
+    lobby_code: 'ABCDEF',
+    game_id: null,
+    players: [
+      { id: hostPlayerId, name: 'Alice', turn_order: 0, is_host: true, status: 'active' as const },
+      { id: hostPlayerId + 1, name: 'Bob', turn_order: 1, is_host: false, status: 'active' as const },
+      { id: hostPlayerId + 2, name: 'Carol', turn_order: 2, is_host: false, status: 'active' as const },
+    ],
+    chat: [],
+  };
+}
+
+async function mockRestartFlowState(page: Page, hostPlayerId: number) {
+  const gameOverPayload = makeGameOverSsePayload(hostPlayerId);
+  const waitingPayload = makeLobbyWaitingSsePayload(hostPlayerId);
+  const streamRegex = /\/priorities\/api\/stream\.php\?/;
+  const restartRegex = /\/priorities\/api\/restart_game\.php/;
+
+  let inWaitingState = false;
+
+  await page.route(streamRegex, async route => {
+    const payload = inWaitingState ? waitingPayload : gameOverPayload;
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      headers: {
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+      body: `data: ${JSON.stringify(payload)}\n\n`,
+    });
+  });
+
+  await page.route(restartRegex, async route => {
+    inWaitingState = true;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ success: true }),
+    });
+  });
+}
+
 /**
  * Sets up a full 3-player game and returns all three pages already on the
  * game page with the initial round visible.
@@ -160,6 +245,49 @@ test.describe('Game flow', () => {
         const text = await scoreLabel.textContent();
         expect(text).not.toContain('5/5');
       }
+    } finally {
+      await Promise.all(contexts.map(c => c.close()));
+    }
+  });
+
+  test('host can restart a finished game with the same players', async ({ browser }) => {
+    const { pages, contexts } = await startThreePlayerGame(browser);
+    const [hostPage] = pages;
+
+    try {
+      const hostPlayerId = parseInt((await hostPage.locator('#root').getAttribute('data-player-id')) ?? '0', 10);
+      expect(hostPlayerId).toBeGreaterThan(0);
+
+      await mockRestartFlowState(hostPage, hostPlayerId);
+      await hostPage.reload();
+
+      await expect(hostPage.locator('.game-over-screen')).toBeVisible({ timeout: 15_000 });
+      await expect(hostPage.getByRole('button', { name: 'Restart with Same People' })).toBeVisible();
+
+      await hostPage.getByRole('button', { name: 'Restart with Same People' }).click();
+
+      await expect(hostPage).toHaveURL(/\/priorities\/lobby\.php\?lobby_id=\d+/);
+      await expect(hostPage.locator('.player-list .player-item')).toHaveCount(3);
+      await expect(hostPage.locator('.player-list .player-item')).toContainText(['Alice', 'Bob', 'Carol']);
+    } finally {
+      await Promise.all(contexts.map(c => c.close()));
+    }
+  });
+
+  test('restart API rejects host while game is still active', async ({ browser }) => {
+    const { pages, contexts } = await startThreePlayerGame(browser);
+    const [hostPage] = pages;
+
+    try {
+      const res = await hostPage.evaluate(async () => {
+        const r = await fetch('api/restart_game.php', { method: 'POST' });
+        const body = await r.json();
+        return { ok: r.ok, status: r.status, body };
+      });
+
+      expect(res.ok).toBe(false);
+      expect(res.status).toBe(400);
+      expect(String(res.body?.error ?? '')).toContain('active');
     } finally {
       await Promise.all(contexts.map(c => c.close()));
     }

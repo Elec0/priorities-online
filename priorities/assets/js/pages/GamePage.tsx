@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { LetterTiles } from '../components/LetterTiles';
 import { ChatPanel } from '../components/ChatPanel';
 import { RankingPhase } from '../phases/RankingPhase';
@@ -12,12 +13,23 @@ function getRootData() {
   return {
     lobbyId:  parseInt(el.dataset.lobbyId ?? '0', 10),
     playerId: parseInt(el.dataset.playerId ?? '0', 10),
+    devProfile: el.dataset.devProfile ?? '',
   };
 }
 
 export function GamePage() {
-  const { lobbyId, playerId } = getRootData();
+  const { lobbyId, playerId, devProfile } = getRootData();
   const { state } = useSSE(lobbyId, 0);
+
+  // Restarts transition the lobby back to waiting; move every client to lobby.php.
+  useEffect(() => {
+    if (state && state.lobby_status === 'waiting') {
+      const query = devProfile
+        ? `?lobby_id=${lobbyId}&dev_profile=${encodeURIComponent(devProfile)}`
+        : `?lobby_id=${lobbyId}`;
+      window.location.href = `lobby.php${query}`;
+    }
+  }, [state, lobbyId, devProfile]);
 
   if (!state || state.lobby_status !== 'playing') {
     return <div className="loading">Connecting…</div>;
@@ -28,7 +40,7 @@ export function GamePage() {
 
   function renderPhase() {
     if (game_status !== 'active') {
-      return <GameOverScreen state={gameState} />;
+      return <GameOverScreen state={gameState} playerId={playerId} lobbyId={lobbyId} devProfile={devProfile} />;
     }
     switch (round.status) {
       case 'ranking':  return <RankingPhase  state={gameState} playerId={playerId} />;

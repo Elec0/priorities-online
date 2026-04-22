@@ -80,6 +80,10 @@ export function nextRound(): Promise<{ success: true }> {
   return post('next_round.php', {});
 }
 
+export function restartGame(): Promise<{ success: true }> {
+  return post('restart_game.php', {});
+}
+
 // ── Social ────────────────────────────────────────────────────────────────────
 
 export function sendMessage(message: string): Promise<{ success: true }> {
