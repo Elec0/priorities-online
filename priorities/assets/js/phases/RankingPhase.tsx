@@ -10,23 +10,10 @@ interface Props {
   playerId: number;
 }
 
-const WAITING_GIF_PATHS = [
-  'assets/images/1.gif',
-  'assets/images/2.gif',
-  'assets/images/3.gif',
-  'assets/images/4.gif',
-  'assets/images/5.gif',
-  'assets/images/6.gif',
-];
-
 export function RankingPhase({ state, playerId }: Props) {
   const { round, target_player } = state;
   const isTarget = playerId === target_player.id;
   const submittedOrderStorageKey = `targetSubmittedOrder:${round.id}`;
-  const waitingGif = useMemo(() => {
-    const idx = Math.floor(Math.random() * WAITING_GIF_PATHS.length);
-    return WAITING_GIF_PATHS[idx] ?? WAITING_GIF_PATHS[0];
-  }, [round.id]);
 
   // Shuffle the card display order uniquely per player using seeded RNG
   // This ensures each player sees cards in a different visual order,
@@ -82,11 +69,9 @@ export function RankingPhase({ state, playerId }: Props) {
         <p className="phase-label">
           🤫 <strong>{target_player.name}</strong> is secretly ranking their cards…
         </p>
-        <img
-          className="waiting-gif"
-          src={waitingGif}
-          alt="Waiting animation while the target ranks cards"
-        />
+        <div className="waiting-dino">
+          <iframe src="dino.html" scrolling="no" width="100%" height="100%" loading="lazy"></iframe>
+        </div>
         <CountdownTimer deadline={round.ranking_deadline} />
       </div>
     );

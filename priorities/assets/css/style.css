@@ -199,13 +199,19 @@ label { display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.9rem; 
 .phase.guessing-phase.target-view { max-width: none; }
 .phase-label { margin-bottom: 1rem; font-size: 1rem; }
 
-.waiting-gif {
-    display: block;
-    width: min(100%, 320px);
-    max-height: 240px;
-    margin: 0 auto 0.8rem;
-    object-fit: contain;
+.waiting-dino {
+    width: min(100%, 500px);
+    height: 300px;
+    margin: 0.35rem auto 0.8rem;
     border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--clr-accent);
+    background: var(--clr-surface);
+}
+
+.waiting-dino iframe {
+    border: 0;
+    display: block;
 }
 
 /* ── Card list ───────────────────────────────────────────────────────────── */
