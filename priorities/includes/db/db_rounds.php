@@ -98,3 +98,15 @@ function dbx_mark_round_skipped(PDO $db, int $round_id): void
     $stmt = $db->prepare("UPDATE rounds SET status = 'skipped' WHERE id = :id");
     $stmt->execute([':id' => $round_id]);
 }
+
+function dbx_fetch_round_role_history_for_game(PDO $db, int $game_id): array
+{
+    $stmt = $db->prepare(
+        'SELECT target_player_id, final_decider_id
+         FROM rounds
+         WHERE game_id = :game_id
+         ORDER BY round_number ASC'
+    );
+    $stmt->execute([':game_id' => $game_id]);
+    return $stmt->fetchAll();
+}

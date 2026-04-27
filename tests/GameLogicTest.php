@@ -265,4 +265,86 @@ class GameLogicTest extends TestCase
         $this->assertSame(2, next_active_player_index($players, 1, 0));
         $this->assertSame(0, next_active_player_index($players, 2, 0));
     }
+
+    // ── pick_role_player_index (semi-random no-repeat roles) ───────────────
+
+    public function test_pick_role_player_index_avoids_repeat_until_everyone_served(): void
+    {
+        $players = $this->makePlayers(0, 1, 2, 3);
+        $history = [0, 2, 3];
+
+        $picked = pick_role_player_index(
+            $players,
+            $history,
+            [],
+            static fn(array $eligibleIds): int => $eligibleIds[0]
+        );
+
+        // Only player 1 is unserved in current cycle.
+        $this->assertSame(1, $picked);
+    }
+
+    public function test_pick_role_player_index_resets_cycle_after_all_served(): void
+    {
+        $players = $this->makePlayers(0, 1, 2);
+        $history = [0, 1, 2];
+
+        $picked = pick_role_player_index(
+            $players,
+            $history,
+            [],
+            static fn(array $eligibleIds): int => $eligibleIds[count($eligibleIds) - 1]
+        );
+
+        // Cycle resets to all active players; deterministic picker chooses last => index 2.
+        $this->assertSame(2, $picked);
+    }
+
+    public function test_pick_role_player_index_respects_excluded_player(): void
+    {
+        $players = $this->makePlayers(0, 1, 2);
+        $history = [0, 1];
+
+        $picked = pick_role_player_index(
+            $players,
+            $history,
+            [2],
+            static fn(array $eligibleIds): int => $eligibleIds[0]
+        );
+
+        // Player 2 (target) is excluded, so FD must be 0 or 1.
+        $this->assertContains($picked, [0, 1]);
+    }
+
+    public function test_all_active_players_served_role_false_until_everyone_seen(): void
+    {
+        $players = $this->makePlayers(0, 1, 2);
+        $this->assertFalse(all_active_players_served_role($players, [0, 2]));
+    }
+
+    public function test_all_active_players_served_role_true_when_everyone_seen(): void
+    {
+        $players = $this->makePlayers(0, 1, 2);
+        $this->assertTrue(all_active_players_served_role($players, [2, 1, 0]));
+    }
+
+    public function test_final_decider_cycle_stays_locked_before_target_cycle_completes(): void
+    {
+        $players = $this->makePlayers(0, 1, 2, 3);
+
+        // Targets have not yet covered player 3.
+        $projectedTargetHistory = [0, 1, 2];
+        $this->assertFalse(all_active_players_served_role($players, $projectedTargetHistory));
+
+        // Final decider should avoid repeats while target cycle is incomplete.
+        // FD history includes 0 and 1; exclude target=2 -> eligible non-repeats should pick 3.
+        $picked = pick_role_player_index(
+            $players,
+            [0, 1],
+            [2],
+            static fn(array $eligibleIds): int => $eligibleIds[0]
+        );
+
+        $this->assertSame(3, $picked);
+    }
 }

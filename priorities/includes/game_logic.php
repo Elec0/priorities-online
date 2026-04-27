@@ -97,6 +97,97 @@ function next_active_player_index(
     return ($current_index + 1) % $count;
 }
 
+/**
+ * Pick an active player index for a role with no-repeat-until-all-served behavior.
+ *
+ * - Uses history of player IDs who have already had this role.
+ * - Excludes any IDs in $exclude_player_ids (e.g. final decider cannot be target).
+ * - If everyone eligible has already served, the role cycle resets.
+ *
+ * @param Player[]       $active_players
+ * @param int[]          $history_player_ids
+ * @param int[]          $exclude_player_ids
+ * @param callable|null  $pick_id_fn Optional deterministic picker for tests.
+ */
+function pick_role_player_index(
+    array $active_players,
+    array $history_player_ids,
+    array $exclude_player_ids = [],
+    ?callable $pick_id_fn = null
+): int {
+    if (count($active_players) === 0) {
+        return 0;
+    }
+
+    $active_ids = array_map(static fn(Player $p) => $p->id, $active_players);
+    $active_set = array_fill_keys($active_ids, true);
+    $exclude_set = array_fill_keys($exclude_player_ids, true);
+
+    $served_set = [];
+    foreach ($history_player_ids as $player_id) {
+        $pid = (int) $player_id;
+        if (isset($active_set[$pid]) && !isset($exclude_set[$pid])) {
+            $served_set[$pid] = true;
+        }
+    }
+
+    $eligible_ids = array_values(array_filter(
+        $active_ids,
+        static fn(int $id) => !isset($exclude_set[$id]) && !isset($served_set[$id])
+    ));
+
+    // Everyone eligible has served; start a new cycle.
+    if (count($eligible_ids) === 0) {
+        $eligible_ids = array_values(array_filter(
+            $active_ids,
+            static fn(int $id) => !isset($exclude_set[$id])
+        ));
+    }
+
+    // Degenerate fallback when exclusions remove everyone.
+    if (count($eligible_ids) === 0) {
+        $eligible_ids = $active_ids;
+    }
+
+    if ($pick_id_fn !== null) {
+        $picked_id = (int) $pick_id_fn($eligible_ids);
+        if (!in_array($picked_id, $eligible_ids, true)) {
+            $picked_id = $eligible_ids[0];
+        }
+    } else {
+        $picked_id = $eligible_ids[random_int(0, count($eligible_ids) - 1)];
+    }
+
+    foreach ($active_players as $index => $player) {
+        if ($player->id === $picked_id) {
+            return $index;
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * True when every active player ID appears at least once in role history IDs.
+ *
+ * @param Player[] $active_players
+ * @param int[]    $history_player_ids
+ */
+function all_active_players_served_role(array $active_players, array $history_player_ids): bool
+{
+    if (count($active_players) === 0) {
+        return true;
+    }
+
+    $served = array_fill_keys(array_map('intval', $history_player_ids), true);
+    foreach ($active_players as $player) {
+        if (!isset($served[$player->id])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // ── DB-touching functions ─────────────────────────────────────────────────────
 
 /**
@@ -201,16 +292,28 @@ function create_next_round(PDO $db, Game $game): bool
 
     $active_players = get_active_players($game->lobbyId, $db);
 
-    $new_target_index = next_active_player_index(
-        $active_players,
-        $game->targetPlayerIndex
+    $role_history_rows = dbx_fetch_round_role_history_for_game($db, $game->id);
+    $target_history_ids = array_map(
+        static fn(array $row) => (int) $row['target_player_id'],
+        $role_history_rows
     );
-    $new_target_turn_order = $active_players[$new_target_index]->turnOrder;
+    $fd_history_ids = array_map(
+        static fn(array $row) => (int) $row['final_decider_id'],
+        $role_history_rows
+    );
 
-    $new_fd_index = next_active_player_index(
+    $new_target_index = pick_role_player_index($active_players, $target_history_ids);
+    $new_target_id = $active_players[$new_target_index]->id;
+
+    // For final decider repeats: only allow a new cycle after everyone has been target.
+    $projected_target_history = [...$target_history_ids, $new_target_id];
+    $target_cycle_complete = all_active_players_served_role($active_players, $projected_target_history);
+    $fd_history_for_selection = $target_cycle_complete ? [] : $fd_history_ids;
+
+    $new_fd_index = pick_role_player_index(
         $active_players,
-        $game->finalDeciderIndex,
-        $new_target_turn_order
+        $fd_history_for_selection,
+        [$new_target_id]
     );
 
     [$dealt, $remaining] = deal_cards($game->deckOrder);
