@@ -7,6 +7,19 @@ function getDevProfile(): string {
   return new URLSearchParams(window.location.search).get('dev_profile') ?? '';
 }
 
+function ensureDevProfile(url: string, devProfile: string): string {
+  if (!devProfile) {
+    return url;
+  }
+
+  if (/([?&])dev_profile=/.test(url)) {
+    return url;
+  }
+
+  const joiner = url.includes('?') ? '&' : '?';
+  return `${url}${joiner}dev_profile=${encodeURIComponent(devProfile)}`;
+}
+
 export function IndexPage() {
   const [tab, setTab]               = useState<Tab>('create');
   const [name, setName]             = useState('');
@@ -24,7 +37,7 @@ export function IndexPage() {
     setLoading(true);
     try {
       const res = await createLobby(name, timerEnabled, timerSeconds, devProfile || undefined);
-      window.location.href = res.redirect_url;
+      window.location.href = ensureDevProfile(res.redirect_url, devProfile);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create lobby');
       setLoading(false);
@@ -37,7 +50,7 @@ export function IndexPage() {
     setLoading(true);
     try {
       const res = await joinLobby(name, code.toUpperCase(), devProfile || undefined);
-      window.location.href = res.redirect_url;
+      window.location.href = ensureDevProfile(res.redirect_url, devProfile);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join lobby');
       setLoading(false);
