@@ -32,7 +32,10 @@ const rankingState = makeGameState({
 });
 
 describe('RankingPhase', () => {
-  beforeEach(() => mockSubmitRanking.mockReset());
+  beforeEach(() => {
+    mockSubmitRanking.mockReset();
+    vi.restoreAllMocks();
+  });
 
   describe('target player (Alice)', () => {
     it('shows the ranking prompt', () => {
@@ -129,6 +132,15 @@ describe('RankingPhase', () => {
     it('does not show the cards', () => {
       render(<RankingPhase state={rankingState} playerId={playerBob.id} />);
       expect(screen.queryByText('Pizza')).toBeNull();
+    });
+
+    it('shows a random waiting gif while target ranks cards', () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.34);
+      render(<RankingPhase state={rankingState} playerId={playerBob.id} />);
+
+      const img = screen.getByAltText('Waiting animation while the target ranks cards');
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute('src', 'assets/images/3.gif');
     });
   });
 });
