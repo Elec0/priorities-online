@@ -347,4 +347,149 @@ class GameLogicTest extends TestCase
 
         $this->assertSame(3, $picked);
     }
+
+    public function test_final_decider_resolves_overlap_when_only_unserved_candidate_is_target(): void
+    {
+        $players = [
+            new Player(
+                id:           1,
+                lobbyId:      1,
+                name:         'Player1',
+                sessionToken: str_repeat('a', 64),
+                isHost:       true,
+                turnOrder:    0,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+            new Player(
+                id:           2,
+                lobbyId:      1,
+                name:         'Player2',
+                sessionToken: str_repeat('b', 64),
+                isHost:       false,
+                turnOrder:    1,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+            new Player(
+                id:           3,
+                lobbyId:      1,
+                name:         'Player3',
+                sessionToken: str_repeat('c', 64),
+                isHost:       false,
+                turnOrder:    2,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+            new Player(
+                id:           4,
+                lobbyId:      1,
+                name:         'Player4',
+                sessionToken: str_repeat('d', 64),
+                isHost:       false,
+                turnOrder:    3,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+        ];
+
+        // Players 1-3 have already served each role; only player 4 is unserved for both.
+        $targetHistory = [1, 2, 3];
+        $fdHistory = [1, 2, 3];
+
+        $targetIndex = pick_role_player_index(
+            $players,
+            $targetHistory,
+            [],
+            static fn(array $eligibleIds): int => $eligibleIds[0]
+        );
+        $targetId = $players[$targetIndex]->id;
+        $this->assertSame(4, $targetId);
+
+        // Target cycle becomes complete once player 4 is projected.
+        $projectedTargetHistory = [...$targetHistory, $targetId];
+        $this->assertTrue(all_active_players_served_role($players, $projectedTargetHistory));
+
+        // Because target cycle is complete, FD selection resets and must exclude target=4.
+        $fdHistoryForSelection = [];
+        $fdIndex = pick_role_player_index(
+            $players,
+            $fdHistoryForSelection,
+            [$targetId],
+            static fn(array $eligibleIds): int => $eligibleIds[0]
+        );
+        $fdId = $players[$fdIndex]->id;
+
+        $this->assertContains($fdId, [1, 2, 3]);
+        $this->assertNotSame($targetId, $fdId);
+    }
+
+    public function test_three_turn_sequence_matches_requested_host_target_decider_pattern(): void
+    {
+        $players = [
+            new Player(
+                id:           1,
+                lobbyId:      1,
+                name:         'Player1',
+                sessionToken: str_repeat('a', 64),
+                isHost:       true,
+                turnOrder:    0,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+            new Player(
+                id:           2,
+                lobbyId:      1,
+                name:         'Player2',
+                sessionToken: str_repeat('b', 64),
+                isHost:       false,
+                turnOrder:    1,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+            new Player(
+                id:           3,
+                lobbyId:      1,
+                name:         'Player3',
+                sessionToken: str_repeat('c', 64),
+                isHost:       false,
+                turnOrder:    2,
+                status:       'active',
+                joinedAt:     '2024-01-01 00:00:00',
+            ),
+        ];
+
+        $pickFirst = static fn(array $eligibleIds): int => $eligibleIds[0];
+
+        // Start with Player 1 already present in FD history, which keeps turn 2 deterministic.
+        $targetHistory = [];
+        $fdHistory = [1];
+        $turnAssignments = [];
+
+        for ($turn = 1; $turn <= 3; $turn++) {
+            $targetIndex = pick_role_player_index($players, $targetHistory, [], $pickFirst);
+            $targetId = $players[$targetIndex]->id;
+
+            $projectedTargetHistory = [...$targetHistory, $targetId];
+            $targetCycleComplete = all_active_players_served_role($players, $projectedTargetHistory);
+            $fdHistoryForSelection = $targetCycleComplete ? [] : $fdHistory;
+
+            $fdIndex = pick_role_player_index($players, $fdHistoryForSelection, [$targetId], $pickFirst);
+            $fdId = $players[$fdIndex]->id;
+
+            $turnAssignments[$turn] = ['target' => $targetId, 'decider' => $fdId];
+
+            $targetHistory[] = $targetId;
+            $fdHistory[] = $fdId;
+        }
+
+        $this->assertTrue($players[0]->isHost);
+
+        // Turn 1: P1 host+target, P2 decider, P3 none.
+        $this->assertSame(['target' => 1, 'decider' => 2], $turnAssignments[1]);
+        // Turn 2: P1 host only, P2 target, P3 decider.
+        $this->assertSame(['target' => 2, 'decider' => 3], $turnAssignments[2]);
+        // Turn 3: P1 host+decider, P2 none, P3 target.
+        $this->assertSame(['target' => 3, 'decider' => 1], $turnAssignments[3]);
+    }
 }
