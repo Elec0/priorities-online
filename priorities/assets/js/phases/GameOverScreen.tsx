@@ -84,7 +84,7 @@ export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) 
           {restarting ? 'Restarting…' : 'Restart with Same People'}
         </button>
       ) : (
-        <p className="waiting-msg">Waiting for the host to restart the game…<br/>OR</p>
+        <p className="waiting-msg">Waiting for the host to restart the game with the same people…<br/>OR</p>
       )}
 
       <button className="action-btn" onClick={handleReturn}>
