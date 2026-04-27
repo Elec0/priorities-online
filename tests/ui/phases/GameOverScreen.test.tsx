@@ -84,6 +84,11 @@ describe('GameOverScreen', () => {
 
     expect(correctItems).toEqual(['Ice cream', 'Pizza', 'Rain']);
     expect(guessItems).toEqual(['Pizza', 'Rain', 'Ice cream']);
+
+    const correctColumnRows = columns[0].querySelectorAll('.card-item');
+    expect(correctColumnRows[0]).toHaveClass('correct');
+    expect(correctColumnRows[1]).toHaveClass('correct');
+    expect(correctColumnRows[2]).toHaveClass('incorrect');
   });
 
   it('shows fallback text when final orders are unavailable', () => {

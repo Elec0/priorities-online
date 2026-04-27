@@ -28,6 +28,7 @@ export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) 
   const cardsById = new Map(round.cards.map(card => [card.id, card] as const));
   const correctOrder = round.target_ranking ?? [];
   const guessOrder = round.group_ranking ?? [];
+  const finalResults = round.result ?? [];
   const correctCards = correctOrder.map(id => cardsById.get(id)).filter((c): c is NonNullable<typeof c> => c !== undefined);
   const guessCards = guessOrder.map(id => cardsById.get(id)).filter((c): c is NonNullable<typeof c> => c !== undefined);
 
@@ -57,7 +58,7 @@ export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) 
         <div className="reveal-col">
           <p className="revealed-col-label">Correct Order</p>
           {correctCards.length > 0 ? (
-            <CardList cards={correctCards} draggable={false} />
+            <CardList cards={correctCards} draggable={false} results={finalResults} />
           ) : (
             <p className="waiting-msg">No final correct order available.</p>
           )}
@@ -66,7 +67,7 @@ export function GameOverScreen({ state, playerId, lobbyId, devProfile }: Props) 
         <div className="reveal-col">
           <p className="revealed-col-label">Final Guess Order</p>
           {guessCards.length > 0 ? (
-            <CardList cards={guessCards} draggable={false} />
+            <CardList cards={guessCards} draggable={false} results={finalResults} />
           ) : (
             <p className="waiting-msg">No final guess order available.</p>
           )}
